@@ -1,3 +1,6 @@
+# Models (downloaded at runtime)
+models/
+
 # Python-generated files
 __pycache__/
 *.py[oc]

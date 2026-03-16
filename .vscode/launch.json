@@ -2,32 +2,38 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "local",
+            "name": "e-voice",
             "type": "debugpy",
             "request": "launch",
-            "module": "robyn",
-            "args": ["app/main.py", "--dev"],
+            "program": "${workspaceFolder}/src/e_voice/main.py",
             "cwd": "${workspaceFolder}",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}"
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "DEBUG": "True",
+                "ENVIRONMENT": "DEV",
+                "WHISPER_DEVICE": "cuda",
+                "WHISPER_COMPUTE_TYPE": "float16",
+                "WHISPER_MODEL": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
             },
-            "justMyCode": true,
+            "justMyCode": false,
             "console": "integratedTerminal"
         },
         {
-            "name": "docker",
+            "name": "e-voice (CPU)",
             "type": "debugpy",
-            "request": "attach",
-            "connect": {
-                "host": "localhost",
-                "port": 5678
+            "request": "launch",
+            "program": "${workspaceFolder}/src/e_voice/main.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "DEBUG": "True",
+                "ENVIRONMENT": "DEV",
+                "WHISPER_DEVICE": "cpu",
+                "WHISPER_COMPUTE_TYPE": "int8",
+                "WHISPER_MODEL": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
             },
-            "pathMappings": [
-                {
-                    "localRoot": "${workspaceFolder}",
-                    "remoteRoot": "/app"
-                }
-            ]
+            "justMyCode": false,
+            "console": "integratedTerminal"
         }
     ]
 }

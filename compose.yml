@@ -1,29 +1,55 @@
+x-common: &common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  ports:
+    - "${API_PORT:-7700}:7700"
+  volumes:
+    - models:/app/models
+  env_file:
+    - path: .env
+      required: false
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 60s
+
 services:
-  robyn-ml-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        - ENABLE_DEBUG=true
-    container_name: robyn-ml-api
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-      - "5678:5678"  # debugpy port
-    volumes:
-      - ./app:/app/app
+  # CPU mode (default)
+  e-voice:
+    <<: *common
+    container_name: e-voice
+    profiles: ["cpu", "default"]
     environment:
-      - ENVIRONMENT=DEV
-      - DEBUG=True
-      - ENABLE_DEBUG=true
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-    env_file:
-      - path: .env
-        required: false
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      - ENVIRONMENT=PROD
+      - DEBUG=False
+      - WHISPER_DEVICE=cpu
+      - WHISPER_COMPUTE_TYPE=default
+      - WHISPER_MODEL=${WHISPER_MODEL:-mobiuslabsgmbh/faster-whisper-large-v3-turbo}
+
+  # GPU mode (requires nvidia-container-toolkit)
+  e-voice-gpu:
+    <<: *common
+    container_name: e-voice-gpu
+    profiles: ["gpu"]
+    environment:
+      - ENVIRONMENT=PROD
+      - DEBUG=False
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=default
+      - WHISPER_MODEL=${WHISPER_MODEL:-mobiuslabsgmbh/faster-whisper-large-v3-turbo}
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  models:
+    driver: local

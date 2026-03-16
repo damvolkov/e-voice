@@ -3,14 +3,14 @@ requires = ["hatchling>=1.24", "uv-dynamic-versioning>=0.7.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "robyn-ml-api"
+name = "e-voice"
 dynamic = ["version"]
-description = "Production-ready ML API template with Robyn, featuring typed routing, event-driven architecture, and Pydantic validation"
+description = "Lightweight speech-to-text API powered by Robyn and faster-whisper"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Your Name", email = "your@email.com" }]
-keywords = ["robyn", "ml", "api", "template", "machine-learning", "pydantic"]
+keywords = ["robyn", "whisper", "stt", "speech-to-text", "faster-whisper", "api"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Framework :: AsyncIO",
@@ -35,14 +35,25 @@ dependencies = [
     "asgi-correlation-id>=4.3.0",
     "beartype>=0.21.0",
     "gitpython>=3.1.45",
-    "magika>=1.0.1",
+    # Speech-to-Text
+    "faster-whisper>=1.1.0",
+    "numpy>=2.0.0",
+    "soundfile>=0.13.0",
+    "scipy>=1.15.0",
+    "huggingface-hub>=0.30.0",
+    # Text-to-Speech
+    "kokoro-onnx>=0.5.0",
+    "av>=14.0.0",
+    # HTTP client
+    "httpx>=0.28.0",
+    "httpx-sse>=0.4.0",
+    "httpx-ws>=0.7.0",
+    # Async I/O
+    "aiofiles>=24.1.0",
 ]
 
-[project.optional-dependencies]
-ml = [
-    "numpy>=2.0.0",
-    "scikit-learn>=1.5.0",
-]
+[project.scripts]
+e-voice = "e_voice.main:main"
 
 [project.urls]
 Documentation = "https://github.com/yourusername/robyn-ml-api#readme"
@@ -58,13 +69,23 @@ dev = [
     "ruff>=0.14.0",
     "pre-commit>=4.4.0",
     "ty>=0.0.5",
+    "respx>=0.22.0",
+    "pytest-cov>=7.0.0",
+    "polyfactory>=3.3.0",
+    "pytest-httpserver>=1.1.5",
+    "pytest-mock>=3.14.0",
+    "fakeredis>=2.28.0",
+    "pytest-xdist>=3.5.0",
+    "pytest-rerunfailures>=15.0",
+    "pytest-coverage>=0.0",
+    "pytest-audioeval>=0.1.2",
 ]
 
 [tool.hatch.version]
 source = "uv-dynamic-versioning"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["src/e_voice"]
 
 [tool.uv-dynamic-versioning]
 vcs = "git"
@@ -75,34 +96,53 @@ bump = true
 installer = "uv"
 
 [tool.hatch.envs.default.scripts]
-dev = "python -m app.main"
+dev = "python -m e_voice.main"
 lint = "ruff check --fix ."
 format = "ruff format ."
 typecheck = "ty check"
-test = "pytest test/unit -v"
+test = "python -m pytest tests/unit -v -m 'not slow' --cov --cov-report=term-missing"
+test-integration = "python -m pytest tests/integration -v -m slow"
 
 [tool.pytest.ini_options]
 env_files = [".env"]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "session"
-testpaths = ["test"]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+addopts = "--import-mode=importlib"
 
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+src = ["src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["e_voice"]
 
 [tool.ty.environment]
 python-version = "3.12"
-root = ["./app"]
+root = ["./src/e_voice"]
 
 [tool.ty.rules]
 possibly-unresolved-reference = "error"
 unresolved-import = "error"
+
+[tool.coverage.run]
+source = ["e_voice"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@abstractmethod",
+    "@overload",
+]
