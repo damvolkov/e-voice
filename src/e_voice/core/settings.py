@@ -114,7 +114,7 @@ class Settings(BaseSettings):
 
     # Server
     API_HOST: str = "0.0.0.0"
-    API_PORT: int = 7700
+    API_PORT: int = 5500
 
     # Paths
     MODELS_PATH: Path = BASE_DIR / "models"

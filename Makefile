@@ -3,7 +3,7 @@
 # =============================================================================
 PROJECT ?= e-voice
 PACKAGE ?= src/e_voice
-SERVICE_PORT ?= 7700
+SERVICE_PORT ?= 5500
 
 OS := $(shell uname -s)
 
@@ -121,7 +121,7 @@ stt:
 	@command -v websocat >/dev/null 2>&1 || { echo "$(RED)websocat not found. Install: cargo install websocat$(RESET)"; exit 1; }
 	@echo "$(CYAN)=== STT: mic → ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions ===$(RESET)"
 	@echo "$(YELLOW)Press Ctrl+C to stop$(RESET)"
-	@ffmpeg -loglevel quiet -f pulse -i default -ac 1 -ar 16000 -f wav - \
+	@ffmpeg -loglevel quiet -f pulse -i default -ac 1 -ar 16000 -f s16le - \
 		| websocat --binary "ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions"
 
 tts:

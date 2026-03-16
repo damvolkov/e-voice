@@ -1,78 +1,88 @@
-"""WebSocket /v1/audio/transcriptions — real-time streaming STT."""
+"""WebSocket /v1/audio/transcriptions — real-time streaming STT (raw PCM16)."""
 
 import orjson
-from robyn import Robyn, WebSocket
+import numpy as np
+import soundfile as sf
+from io import BytesIO
 from robyn.robyn import WebSocketConnector
 
 from e_voice.adapters.whisper import WhisperAdapter
-from e_voice.core.helpers import audio_samples_from_file
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
+from e_voice.core.websocket import BaseWebSocket
 from e_voice.models.transcription import ResponseFormat, TranscriptionResponse
 
+SAMPLES_PER_SECOND = 16_000
 
-def create_ws_stt(app: Robyn) -> WebSocket:
-    """Create WebSocket endpoint for real-time transcription."""
-    ws = WebSocket(app, "/v1/audio/transcriptions")
+ws_stt = BaseWebSocket("/v1/audio/transcriptions")
 
-    @ws.on("connect")
-    def on_connect(ws: WebSocketConnector) -> str:
-        logger.info("connected", step="WS", client=ws.id)
-        return ""
 
-    @ws.on("message")
-    async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> str:
-        """Receive audio bytes, transcribe, send back result."""
-        whisper: WhisperAdapter = global_dependencies.get("state").whisper
+def _pcm16_to_float32(raw: bytes) -> np.ndarray:
+    """Decode raw PCM16-LE bytes to float32 samples at 16kHz."""
+    audio, _ = sf.read(
+        BytesIO(raw),
+        format="RAW",
+        channels=1,
+        samplerate=SAMPLES_PER_SECOND,
+        subtype="PCM_16",
+        dtype="float32",
+        endian="LITTLE",
+    )
+    return audio
 
-        model_id = st.WHISPER_MODEL
-        language = st.DEFAULT_LANGUAGE
-        response_format = ResponseFormat(st.DEFAULT_RESPONSE_FORMAT)
-        temperature = 0.0
-        vad_filter = True
 
-        try:
-            audio_data = audio_samples_from_file(msg.encode("latin-1") if isinstance(msg, str) else msg)
-        except Exception as exc:
-            return orjson.dumps({"error": f"Audio decode failed: {exc}"}).decode()
+@ws_stt.on("connect")
+def on_connect(ws: WebSocketConnector) -> str:
+    logger.info("stt connected", step="WS", client=ws.id)
+    return ""
 
-        logger.info("transcription request", step="WS", client=ws.id, audio_len=len(audio_data))
 
-        try:
-            segments, info = await whisper.transcribe(
-                audio_data,
-                model_id=model_id,
-                language=language,
-                temperature=temperature,
-                vad_filter=vad_filter,
-            )
+@ws_stt.on("message")
+async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> str:
+    """Receive raw PCM16 audio, transcribe, return result."""
+    whisper: WhisperAdapter = global_dependencies.get("state").whisper
 
-            match response_format:
-                case ResponseFormat.TEXT:
-                    return WhisperAdapter.segments_to_text(segments)
-                case ResponseFormat.JSON:
-                    return TranscriptionResponse(text=WhisperAdapter.segments_to_text(segments)).model_dump_json()
-                case ResponseFormat.VERBOSE_JSON:
-                    seg_models = [WhisperAdapter.segment_to_model(seg) for seg in segments]
-                    return orjson.dumps(
-                        {
-                            "task": "transcribe",
-                            "language": info.language,
-                            "duration": info.duration,
-                            "text": WhisperAdapter.segments_to_text(segments),
-                            "segments": [s.model_dump() for s in seg_models],
-                        }
-                    ).decode()
-                case _:
-                    return WhisperAdapter.segments_to_text(segments)
+    raw_bytes = msg.encode("latin-1") if isinstance(msg, str) else msg
+    audio_data = _pcm16_to_float32(raw_bytes)
 
-        except Exception as exc:
-            logger.error("transcription error", error=str(exc), client=ws.id)
-            return orjson.dumps({"error": str(exc)}).decode()
+    duration = len(audio_data) / SAMPLES_PER_SECOND
+    logger.info("transcription request", step="WS", client=ws.id, duration=f"{duration:.1f}s")
 
-    @ws.on("close")
-    def on_close(ws: WebSocketConnector) -> str:
-        logger.info("disconnected", step="WS", client=ws.id)
-        return ""
+    model_id = st.WHISPER_MODEL
+    language = st.DEFAULT_LANGUAGE
+    response_format = ResponseFormat(st.DEFAULT_RESPONSE_FORMAT)
 
-    return ws
+    segments, info = await whisper.transcribe(
+        audio_data,
+        model_id=model_id,
+        language=language,
+        temperature=0.0,
+        vad_filter=True,
+    )
+
+    logger.info("transcription done", step="WS", client=ws.id, segments=len(segments))
+
+    match response_format:
+        case ResponseFormat.TEXT:
+            return WhisperAdapter.segments_to_text(segments)
+        case ResponseFormat.JSON:
+            return TranscriptionResponse(text=WhisperAdapter.segments_to_text(segments)).model_dump_json()
+        case ResponseFormat.VERBOSE_JSON:
+            seg_models = [WhisperAdapter.segment_to_model(seg) for seg in segments]
+            return orjson.dumps(
+                {
+                    "task": "transcribe",
+                    "language": info.language,
+                    "duration": info.duration,
+                    "text": WhisperAdapter.segments_to_text(segments),
+                    "segments": [s.model_dump() for s in seg_models],
+                }
+            ).decode()
+        case _:
+            return WhisperAdapter.segments_to_text(segments)
+
+
+@ws_stt.on("close")
+def on_close(ws: WebSocketConnector) -> str:
+    logger.info("stt disconnected", step="WS", client=ws.id)
+    return ""

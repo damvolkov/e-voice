@@ -1,5 +1,5 @@
-# Models (downloaded at runtime)
-models/
+# Models (downloaded at runtime — root only)
+/models/
 
 # Python-generated files
 __pycache__/
@@ -36,4 +36,3 @@ test/evaluation/regression/api/output/
 
 
 scripts/*
-scripts/** */

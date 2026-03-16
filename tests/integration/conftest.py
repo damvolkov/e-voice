@@ -6,7 +6,7 @@ import pytest
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Register custom CLI options for integration tests."""
-    parser.addoption("--base-url", default="http://localhost:7700", help="Base URL for the e-voice API")
+    parser.addoption("--base-url", default="http://localhost:5500", help="Base URL for the e-voice API")
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

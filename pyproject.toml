@@ -7,7 +7,7 @@ name = "e-voice"
 dynamic = ["version"]
 description = "Lightweight speech-to-text API powered by Robyn and faster-whisper"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 authors = [{ name = "Your Name", email = "your@email.com" }]
 keywords = ["robyn", "whisper", "stt", "speech-to-text", "faster-whisper", "api"]
@@ -79,6 +79,8 @@ dev = [
     "pytest-rerunfailures>=15.0",
     "pytest-coverage>=0.0",
     "pytest-audioeval>=0.1.2",
+    "debugpy>=1.8.20",
+    "sounddevice>=0.5.5",
 ]
 
 [tool.hatch.version]

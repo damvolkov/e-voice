@@ -8,13 +8,14 @@ from e_voice.api.tts import router as tts_router
 from e_voice.core.lifespan import create_lifespan
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
+from e_voice.core.websocket import WebSocketHandler
 from e_voice.events.kokoro_model import KokoroModelEvent
 from e_voice.events.process_pool import ProcessPoolEvent
 from e_voice.events.whisper_model import WhisperModelEvent
 from e_voice.middlewares.base import MiddlewareHandler
 from e_voice.middlewares.files import FileUploadOpenAPIMiddleware
-from e_voice.websockets.stt import create_ws_stt
-from e_voice.websockets.tts import create_ws_tts
+from e_voice.websockets.stt import ws_stt
+from e_voice.websockets.tts import ws_tts
 
 app = Robyn(__file__)
 
@@ -24,7 +25,19 @@ lifespan.register(ProcessPoolEvent)
 lifespan.register(WhisperModelEvent)
 lifespan.register(KokoroModelEvent)
 
-app.startup_handler(lifespan.startup)
+# WebSockets (register now, inject dependencies during startup)
+websockets = WebSocketHandler(app)
+websockets.register(ws_stt)
+websockets.register(ws_tts)
+
+
+async def startup() -> None:
+    """Startup: lifespan first, then inject WS dependencies."""
+    await lifespan.startup()
+    websockets.inject_dependencies()
+
+
+app.startup_handler(startup)
 app.shutdown_handler(lifespan.shutdown)
 
 # Middlewares
@@ -35,10 +48,6 @@ middlewares.register(FileUploadOpenAPIMiddleware)
 app.include_router(health_router)
 app.include_router(stt_router)
 app.include_router(tts_router)
-
-# WebSockets
-create_ws_stt(app)
-create_ws_tts(app)
 
 
 def main() -> None:

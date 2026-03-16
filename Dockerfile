@@ -73,9 +73,9 @@ ENV WHISPER_COMPUTE_TYPE="default"
 ENV WHISPER_MODEL="mobiuslabsgmbh/faster-whisper-large-v3-turbo"
 ENV MODELS_PATH="/app/models"
 
-EXPOSE 7700
+EXPOSE 5500
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:7700/health || exit 1
+    CMD curl -f http://localhost:5500/health || exit 1
 
 CMD ["python", "-m", "e_voice"]
