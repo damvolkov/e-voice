@@ -1,0 +1,20 @@
+{
+    "python.testing.pytestArgs": [
+        "test"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.indexing": true,
+    "python.analysis.extraPaths": [
+        "./app"
+    ],
+    "postman.settings.dotenv-detection-notification-visibility": false,
+    "cursorpyright.analysis.autoImportCompletions": true,
+    "cursorpyright.analysis.extraPaths": [
+        "./app"
+    ],
+    "cursorpyright.analysis.typeCheckingMode": "basic"
+}

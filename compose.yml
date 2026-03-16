@@ -1,0 +1,29 @@
+services:
+  robyn-ml-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - ENABLE_DEBUG=true
+    container_name: robyn-ml-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # debugpy port
+    volumes:
+      - ./app:/app/app
+    environment:
+      - ENVIRONMENT=DEV
+      - DEBUG=True
+      - ENABLE_DEBUG=true
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    env_file:
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

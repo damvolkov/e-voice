@@ -1,0 +1,108 @@
+[build-system]
+requires = ["hatchling>=1.24", "uv-dynamic-versioning>=0.7.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "robyn-ml-api"
+dynamic = ["version"]
+description = "Production-ready ML API template with Robyn, featuring typed routing, event-driven architecture, and Pydantic validation"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Your Name", email = "your@email.com" }]
+keywords = ["robyn", "ml", "api", "template", "machine-learning", "pydantic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "robyn>=0.72.0",
+    "pydantic>=2.11.0",
+    "pydantic-settings>=2.10.0",
+    "orjson>=3.10.0",
+    "structlog>=25.0.0",
+    "colorama>=0.4.6",
+    "asgi-correlation-id>=4.3.0",
+    "beartype>=0.21.0",
+    "gitpython>=3.1.45",
+    "magika>=1.0.1",
+]
+
+[project.optional-dependencies]
+ml = [
+    "numpy>=2.0.0",
+    "scikit-learn>=1.5.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/yourusername/robyn-ml-api#readme"
+Repository = "https://github.com/yourusername/robyn-ml-api"
+Issues = "https://github.com/yourusername/robyn-ml-api/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+    "pytest-asyncio>=1.0.0",
+    "pytest-dotenv>=0.5.2",
+    "python-dotenv>=1.1.0",
+    "ruff>=0.14.0",
+    "pre-commit>=4.4.0",
+    "ty>=0.0.5",
+]
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+
+[tool.hatch.envs.default]
+installer = "uv"
+
+[tool.hatch.envs.default.scripts]
+dev = "python -m app.main"
+lint = "ruff check --fix ."
+format = "ruff format ."
+typecheck = "ty check"
+test = "pytest test/unit -v"
+
+[tool.pytest.ini_options]
+env_files = [".env"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+testpaths = ["test"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ty.environment]
+python-version = "3.12"
+root = ["./app"]
+
+[tool.ty.rules]
+possibly-unresolved-reference = "error"
+unresolved-import = "error"

@@ -1,0 +1,36 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.idea/
+
+# Virtual environments
+.venv
+.env
+
+notebook/
+
+# Data directory - ignore all except tuned NER model
+data/*
+!data/nlp/
+data/nlp/*
+!data/nlp/ner/
+data/nlp/ner/*
+!data/nlp/ner/ner/
+data/nlp/ner/base/
+
+# Notebooks
+test/notebook/
+
+# Evaluation regression test outputs (generated results)
+test/evaluation/regression/api/output/
+
+
+scripts/*
+scripts/** */

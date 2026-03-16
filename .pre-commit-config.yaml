@@ -1,0 +1,40 @@
+repos:
+  # Basic auto-fixes (zero friction)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+
+  # Python code formatting (auto-fix)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.3
+    hooks:
+      - id: ruff-format
+
+  # Semgrep and gitleaks security scanning
+  - repo: https://github.com/returntocorp/semgrep
+    rev: "v1.89.0"
+    hooks:
+      - id: semgrep
+        args:
+          [
+            "--metrics=off",
+            "--config",
+            "p/owasp-top-ten",
+            "--config",
+            "p/cwe-top-25",
+            "--config",
+            "p/gitleaks",
+            "--error",
+            "--skip-unknown-extensions",
+            "--exclude-rule=python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text",
+          ]
+        stages: [pre-commit]
+
+  # Dedicated secrets detection using Gitleaks (standalone security tool)
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
