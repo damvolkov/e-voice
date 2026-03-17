@@ -52,16 +52,14 @@ RUN groupadd -g 1000 app && \
     useradd -m -u 1000 -g app -d /app -s /bin/bash app
 
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
-COPY --from=builder --chown=app:app /app/.git /app/.git
 COPY --from=builder --chown=app:app /app/src /app/src
 COPY --from=builder --chown=app:app /app/pyproject.toml /app/pyproject.toml
+COPY --from=builder --chown=app:app /app/README.md /app/README.md
 
 RUN mkdir -p /app/data/models /app/data/config && \
     chown -R app:app /app/data
 
 USER 1000
-
-RUN git config --global --add safe.directory /app
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src"
