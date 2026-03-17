@@ -50,7 +50,6 @@ async def speech(request: Request, body: Body, global_dependencies):
 
     logger.info("speech request", step="TTS", voice=params.voice, stream=params.stream, format=fmt)
 
-    # SSE streaming
     if params.stream and params.stream_format == StreamFormat.SSE:
 
         async def sse_generator():
@@ -66,7 +65,6 @@ async def speech(request: Request, body: Body, global_dependencies):
 
         return SSEResponse(sse_generator())
 
-    # Audio streaming (chunked binary)
     if params.stream:
 
         async def audio_generator():
@@ -84,7 +82,6 @@ async def speech(request: Request, body: Body, global_dependencies):
             headers={"content-type": content_type, "transfer-encoding": "chunked"},
         )
 
-    # Non-streaming
     samples, sr = await kokoro.synthesize(
         params.input,
         voice=params.voice,

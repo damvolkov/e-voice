@@ -1,6 +1,6 @@
 {
     "python.testing.pytestArgs": [
-        "test"
+        "tests"
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
@@ -9,12 +9,6 @@
     "python.analysis.autoImportCompletions": true,
     "python.analysis.indexing": true,
     "python.analysis.extraPaths": [
-        "./app"
-    ],
-    "postman.settings.dotenv-detection-notification-visibility": false,
-    "cursorpyright.analysis.autoImportCompletions": true,
-    "cursorpyright.analysis.extraPaths": [
-        "./app"
-    ],
-    "cursorpyright.analysis.typeCheckingMode": "basic"
+        "./src"
+    ]
 }

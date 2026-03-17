@@ -18,7 +18,6 @@ class BaseMiddleware(ABC):
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        # Check that at least one of before/after is implemented
         before_abstract = getattr(cls.before, "__isabstractmethod__", False)
         after_abstract = getattr(cls.after, "__isabstractmethod__", False)
         if before_abstract and after_abstract:

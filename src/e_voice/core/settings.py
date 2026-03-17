@@ -171,7 +171,6 @@ class FrontConfig(BaseModel):
 class Settings(BaseSettings):
     """Root settings — loaded from data/config/config.yaml."""
 
-    # Derived paths (ClassVar — not configurable, not in YAML)
     BASE_DIR: ClassVar[Path] = Path(__file__).resolve().parent.parent.parent.parent
     PROJECT: ClassVar[dict] = read_pyproject(BASE_DIR / "pyproject.toml")
     API_NAME: ClassVar[str] = PROJECT.get("project", {}).get("name", "e-voice")
@@ -181,7 +180,6 @@ class Settings(BaseSettings):
     MODELS_PATH: ClassVar[Path] = DATA_PATH / "models"
     CONFIG_PATH: ClassVar[Path] = DATA_PATH / "config"
 
-    # YAML sections
     system: SystemConfig = SystemConfig()
     stt: STTConfig = STTConfig()
     tts: TTSConfig = TTSConfig()

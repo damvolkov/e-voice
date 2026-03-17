@@ -9,7 +9,7 @@ description = "Lightweight speech-to-text API powered by Robyn and faster-whispe
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
-authors = [{ name = "Your Name", email = "your@email.com" }]
+authors = [{ name = "Damien", email = "damien@e-voice.dev" }]
 keywords = ["robyn", "whisper", "stt", "speech-to-text", "faster-whisper", "api"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -33,16 +33,13 @@ dependencies = [
     "structlog>=25.0.0",
     "beartype>=0.21.0",
     "gitpython>=3.1.45",
-    # Speech-to-Text
     "faster-whisper>=1.1.0",
     "numpy>=2.0.0",
     "soundfile>=0.13.0",
     "scipy>=1.15.0",
     "huggingface-hub>=0.30.0",
-    # Text-to-Speech
     "kokoro-onnx>=0.5.0",
     "av>=14.0.0",
-    # HTTP client
     "httpx>=0.28.0",
     "httpx-sse>=0.4.0",
     "httpx-ws>=0.7.0",
@@ -53,13 +50,9 @@ dependencies = [
 e-voice = "e_voice.main:main"
 
 [project.urls]
-Documentation = "https://github.com/yourusername/robyn-ml-api#readme"
-Repository = "https://github.com/yourusername/robyn-ml-api"
-Issues = "https://github.com/yourusername/robyn-ml-api/issues"
 
 [dependency-groups]
 dev = [
-    "pytest>=8.4.0",
     "pytest>=8.4.0",
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=7.0.0",
@@ -133,7 +126,9 @@ source = ["e_voice"]
 branch = true
 omit = [
     "src/e_voice/main.py",
+    "src/e_voice/front.py",
     "src/e_voice/api/*",
+    "src/e_voice/adapters/*",
     "src/e_voice/websockets/*",
     "src/e_voice/middlewares/*",
     "src/e_voice/core/router.py",

@@ -1,6 +1,7 @@
 """Kokoro-ONNX adapter — TTS model lifecycle and speech synthesis."""
 
 import asyncio
+import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -11,7 +12,13 @@ from numpy.typing import NDArray
 
 from e_voice.adapters.base import BaseModelAdapter
 from e_voice.core.logger import logger
+from e_voice.core.settings import DeviceType
 from e_voice.core.settings import settings as st
+
+_ONNX_PROVIDERS: dict[DeviceType, str] = {
+    DeviceType.CUDA: "CUDAExecutionProvider",
+    DeviceType.CPU: "CPUExecutionProvider",
+}
 
 KOKORO_SAMPLE_RATE = 24_000
 
@@ -65,7 +72,10 @@ class KokoroAdapter(BaseModelAdapter):
         if not model_path.exists() or not voices_path.exists():
             await self._lc_download_files(model_path, voices_path)
 
-        logger.info("loading kokoro model", step="MODEL", path=str(self._model_dir))
+        if provider := _ONNX_PROVIDERS.get(st.tts.device):
+            os.environ["ONNX_PROVIDER"] = provider
+
+        logger.info("loading kokoro model", step="MODEL", path=str(self._model_dir), device=st.tts.device.value)
         self._kokoro = await asyncio.to_thread(Kokoro, str(model_path), str(voices_path))
         logger.info("kokoro model loaded", step="MODEL")
 

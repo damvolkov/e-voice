@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from e_voice.adapters.whisper import WhisperAdapter, _format_srt, _format_srt_segment, _format_vtt, _format_vtt_segment
+from e_voice.core.settings import ComputeType, DeviceType, STTConfig
 from e_voice.models.transcription import ResponseFormat
 
 
@@ -211,3 +212,23 @@ async def test_format_vtt_full() -> None:
     segs = [MockSegment(text=" hi", start=0.0, end=1.0)]
     result = _format_vtt(segs)
     assert result.startswith("WEBVTT")
+
+
+##### DEVICE CONFIG #####
+
+
+@pytest.mark.parametrize(
+    ("device", "compute"),
+    [
+        (DeviceType.CUDA, ComputeType.FLOAT16),
+        (DeviceType.CPU, ComputeType.INT8),
+        (DeviceType.AUTO, ComputeType.DEFAULT),
+    ],
+    ids=["cuda-fp16", "cpu-int8", "auto-default"],
+)
+async def test_adapter_respects_device_config(device: DeviceType, compute: ComputeType) -> None:
+    """WhisperAdapter stores the device config from STTConfig."""
+    config = STTConfig(device=device, compute_type=compute)
+    adapter = WhisperAdapter(config=config)
+    assert adapter._config.device == device
+    assert adapter._config.compute_type == compute

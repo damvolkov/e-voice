@@ -22,13 +22,11 @@ from e_voice.websockets.tts import ws_tts
 
 app = Robyn(__file__)
 
-# Lifespan events
 lifespan = create_lifespan(app)
 lifespan.register(ProcessPoolEvent)
 lifespan.register(WhisperModelEvent)
 lifespan.register(KokoroModelEvent)
 
-# WebSockets (register now, inject dependencies during startup)
 websockets = WebSocketHandler(app)
 websockets.register(ws_stt)
 websockets.register(ws_tts)
@@ -44,12 +42,10 @@ async def startup() -> None:
 app.startup_handler(startup)
 app.shutdown_handler(lifespan.shutdown)
 
-# Middlewares
 middlewares = MiddlewareHandler(app)
 middlewares.register(FileUploadOpenAPIMiddleware)
 middlewares.register(SwaggerBrandingMiddleware)
 
-# HTTP Routers
 app.include_router(health_router)
 app.include_router(stt_router)
 app.include_router(tts_router)

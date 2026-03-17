@@ -155,14 +155,12 @@ def _create_method_wrapper(original_method: Callable, router_prefix: str = "") -
                 if file_params and (error := parse_request_files(file_params, request, h_kwargs)):
                     return error
 
-                # Pass request to handler only if it declared it
                 if has_request_param:
                     h_kwargs["request"] = request
 
                 result = await handler(**h_kwargs)
                 return parse_response(result)
 
-            # Build signature: always include request for Robyn injection
             new_params = [inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request)]
             for name, param in sig.parameters.items():
                 if name == "request" or name in file_params:

@@ -14,20 +14,16 @@ import structlog
 _RESET: Final[str] = "\033[0m"
 
 _STEP_COLORS: dict[str, str] = {
-    # System lifecycle
     "START": "255;215;0",
     "STOP": "255;165;0",
     "OK": "50;205;50",
     "IPC": "147;112;219",
-    # STT pipeline
     "STT": "144;238;144",
     "VAD": "46;139;87",
     "MODEL": "0;206;209",
     "DOWNLOAD": "100;149;237",
-    # WebSocket / streaming
     "WS": "70;130;180",
     "SSE": "70;130;180",
-    # Errors / warnings (overridden by level)
     "ERROR": "255;69;0",
     "WARN": "255;165;0",
 }
