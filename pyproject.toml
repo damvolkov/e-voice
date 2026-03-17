@@ -125,13 +125,15 @@ unresolved-import = "error"
 [tool.coverage.run]
 source = ["e_voice"]
 branch = true
+# Entrypoints (not unit-testable) + Robyn internals (covered by integration tests)
 omit = [
     "src/e_voice/main.py",
     "src/e_voice/front.py",
+    "src/e_voice/core/router.py",
 ]
 
 [tool.coverage.report]
-fail_under = 75
+fail_under = 90
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

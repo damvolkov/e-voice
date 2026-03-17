@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -229,3 +230,57 @@ async def test_adapter_respects_device_config(device: DeviceType, compute: Compu
     adapter = WhisperAdapter(config=config)
     assert adapter._config.device == device
     assert adapter._config.compute_type == compute
+
+
+##### MODEL LIFECYCLE (mocked) #####
+
+
+async def test_load_stores_model() -> None:
+    adapter = WhisperAdapter()
+    mock_model = MagicMock()
+    with patch.object(adapter, "_lc_create_model", return_value=mock_model):
+        await adapter.load("test-model")
+    assert await adapter.is_loaded("test-model")
+    assert "test-model" in adapter.loaded_models()
+
+
+async def test_load_skips_if_already_loaded() -> None:
+    adapter = WhisperAdapter()
+    mock_model = MagicMock()
+    with patch.object(adapter, "_lc_create_model", return_value=mock_model) as create:
+        await adapter.load("test-model")
+        await adapter.load("test-model")
+    create.assert_called_once()
+
+
+async def test_unload_removes_model() -> None:
+    adapter = WhisperAdapter()
+    mock_model = MagicMock()
+    with patch.object(adapter, "_lc_create_model", return_value=mock_model):
+        await adapter.load("test-model")
+    assert await adapter.unload("test-model") is True
+    assert not await adapter.is_loaded("test-model")
+    assert adapter.loaded_models() == []
+
+
+async def test_transcribe_calls_model() -> None:
+    adapter = WhisperAdapter()
+    mock_model = MagicMock()
+    mock_segments = [MockSegment(text=" hello", words=None)]
+    mock_info = MagicMock(language="en", duration=1.0)
+    mock_model.transcribe.return_value = (iter(mock_segments), mock_info)
+    with patch.object(adapter, "_lc_create_model", return_value=mock_model):
+        await adapter.load("test-model")
+    segments, info = await adapter.transcribe(
+        np.zeros(16000, dtype=np.float32), model_id="test-model"
+    )
+    assert len(segments) == 1
+    assert info.language == "en"
+
+
+async def test_download_calls_snapshot(tmp_path) -> None:
+    adapter = WhisperAdapter()
+    with patch("e_voice.adapters.whisper.snapshot_download", return_value=str(tmp_path)) as dl:
+        path = await adapter.download("org/model")
+    dl.assert_called_once()
+    assert path == tmp_path

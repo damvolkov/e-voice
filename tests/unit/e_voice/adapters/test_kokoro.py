@@ -1,3 +1,8 @@
+"""Unit tests for adapters/kokoro.py — device config, language resolution, lifecycle."""
+
+from unittest.mock import MagicMock, patch
+
+import numpy as np
 import pytest
 
 from e_voice.adapters.kokoro import _ONNX_PROVIDERS, KokoroAdapter, _resolve_lang
@@ -67,3 +72,73 @@ async def test_adapter_resolve_raises_not_loaded() -> None:
     adapter = KokoroAdapter()
     with pytest.raises(RuntimeError, match="not loaded"):
         adapter._lc_resolve()
+
+
+##### LIFECYCLE WITH MOCKS #####
+
+
+async def test_load_sets_model(tmp_path) -> None:
+    model_path = tmp_path / "kokoro-v1.0.onnx"
+    voices_path = tmp_path / "voices-v1.0.bin"
+    model_path.write_bytes(b"fake")
+    voices_path.write_bytes(b"fake")
+
+    adapter = KokoroAdapter(model_dir=tmp_path)
+    mock_kokoro = MagicMock()
+    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro):
+        await adapter.load()
+
+    assert await adapter.is_loaded()
+    assert adapter.loaded_models() == ["kokoro"]
+
+
+async def test_load_skips_if_already_loaded(tmp_path) -> None:
+    model_path = tmp_path / "kokoro-v1.0.onnx"
+    voices_path = tmp_path / "voices-v1.0.bin"
+    model_path.write_bytes(b"fake")
+    voices_path.write_bytes(b"fake")
+
+    adapter = KokoroAdapter(model_dir=tmp_path)
+    mock_kokoro = MagicMock()
+    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro) as ctor:
+        await adapter.load()
+        await adapter.load()
+    ctor.assert_called_once()
+
+
+async def test_unload_clears_model(tmp_path) -> None:
+    model_path = tmp_path / "kokoro-v1.0.onnx"
+    voices_path = tmp_path / "voices-v1.0.bin"
+    model_path.write_bytes(b"fake")
+    voices_path.write_bytes(b"fake")
+
+    adapter = KokoroAdapter(model_dir=tmp_path)
+    with patch("e_voice.adapters.kokoro.Kokoro", return_value=MagicMock()):
+        await adapter.load()
+    assert await adapter.unload() is True
+    assert not await adapter.is_loaded()
+
+
+async def test_synthesize_calls_create(tmp_path) -> None:
+    model_path = tmp_path / "kokoro-v1.0.onnx"
+    voices_path = tmp_path / "voices-v1.0.bin"
+    model_path.write_bytes(b"fake")
+    voices_path.write_bytes(b"fake")
+
+    mock_kokoro = MagicMock()
+    mock_kokoro.create.return_value = (np.zeros(24000, dtype=np.float32), 24000)
+
+    adapter = KokoroAdapter(model_dir=tmp_path)
+    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro):
+        await adapter.load()
+    samples, sr = await adapter.synthesize("hello", voice="af_heart")
+    assert sr == 24000
+    assert len(samples) == 24000
+
+
+async def test_download_creates_files(tmp_path) -> None:
+    adapter = KokoroAdapter(model_dir=tmp_path)
+    with patch.object(adapter, "_lc_download_files") as dl:
+        path = await adapter.download()
+    dl.assert_called_once()
+    assert path == tmp_path
