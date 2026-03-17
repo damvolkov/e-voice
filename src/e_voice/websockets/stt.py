@@ -59,9 +59,9 @@ def _format_event(event: StreamingEvent, response_format: str) -> str:
 
 @ws_stt.on("connect")
 def on_connect(ws: WebSocketConnector) -> str:
-    lang = ws.query_params.get("language", None) or st.DEFAULT_LANGUAGE
-    fmt = ws.query_params.get("response_format", None) or st.DEFAULT_RESPONSE_FORMAT
-    model = ws.query_params.get("model", None) or st.WHISPER_MODEL
+    lang = ws.query_params.get("language", None) or st.stt.default_language
+    fmt = ws.query_params.get("response_format", None) or st.stt.default_response_format.value
+    model = ws.query_params.get("model", None) or st.stt.model
 
     _SESSIONS[ws.id] = SessionState(
         language=lang if lang != "auto" else None,

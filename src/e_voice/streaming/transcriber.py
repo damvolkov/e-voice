@@ -119,13 +119,13 @@ class SessionState:
         response_format: str = "text",
     ) -> None:
         self.audio_buffer = AudioBuffer(
-            max_duration_s=st.STREAMING_MAX_BUFFER_SECONDS,
-            trim_duration_s=st.STREAMING_TRIM_SECONDS,
+            max_duration_s=st.streaming.max_buffer_seconds,
+            trim_duration_s=st.streaming.trim_seconds,
         )
         self.confirmed = WordBuffer()
         self.agreement = LocalAgreement()
         self.language = language
-        self.model_id = model_id or st.WHISPER_MODEL
+        self.model_id = model_id or st.stt.model
         self.response_format = response_format
         self._ss_last_transcribe_end: float = 0.0
         self._ss_last_activity_ts: float = time.monotonic()
@@ -145,7 +145,7 @@ async def process_audio_chunk(
     session.audio_buffer.append(audio_samples)
 
     new_audio = session.audio_buffer.new_samples_since(session._ss_last_transcribe_end)
-    if new_audio < st.STREAMING_MIN_DURATION:
+    if new_audio < st.streaming.min_duration:
         return None
 
     audio_start = _needs_audio_after(session.confirmed)
@@ -168,7 +168,7 @@ async def process_audio_chunk(
 
     session._ss_last_transcribe_end = session.audio_buffer.total_duration
 
-    incoming_words = _extract_words(segments, audio_start, st.STREAMING_NO_SPEECH_THRESHOLD)
+    incoming_words = _extract_words(segments, audio_start, st.streaming.no_speech_threshold)
 
     if not incoming_words:
         return None
@@ -275,4 +275,4 @@ def _check_same_output(session: SessionState) -> bool:
         session._ss_same_output_count = 1
         session._ss_prev_unconfirmed = current
 
-    return session._ss_same_output_count >= st.STREAMING_SAME_OUTPUT_THRESHOLD
+    return session._ss_same_output_count >= st.streaming.same_output_threshold

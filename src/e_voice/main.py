@@ -4,6 +4,7 @@ from robyn import Robyn
 
 from e_voice.api.health import router as health_router
 from e_voice.api.stt import router as stt_router
+from e_voice.api.system import router as system_router
 from e_voice.api.tts import router as tts_router
 from e_voice.core.lifespan import create_lifespan
 from e_voice.core.logger import logger
@@ -48,11 +49,12 @@ middlewares.register(FileUploadOpenAPIMiddleware)
 app.include_router(health_router)
 app.include_router(stt_router)
 app.include_router(tts_router)
+app.include_router(system_router)
 
 
 def main() -> None:
-    logger.info("starting server", name=st.API_NAME, host=st.API_HOST, port=st.API_PORT, step="START")
-    app.start(host=st.API_HOST, port=st.API_PORT)
+    logger.info("starting server", name=st.API_NAME, host=st.system.host, port=st.system.port, step="START")
+    app.start(host=st.system.host, port=st.system.port)
 
 
 if __name__ == "__main__":

@@ -82,6 +82,14 @@ class KokoroAdapter(BaseModelAdapter):
     def loaded_models(self) -> list[str]:
         return ["kokoro"] if self._kokoro is not None else []
 
+    async def download(self, model_id: str = "kokoro") -> Path:
+        """Download Kokoro model files to disk. Returns model directory."""
+        self._model_dir.mkdir(parents=True, exist_ok=True)
+        model_path = self._model_dir / _MODEL_FILENAME
+        voices_path = self._model_dir / _VOICES_FILENAME
+        await self._lc_download_files(model_path, voices_path)
+        return self._model_dir
+
     async def _lc_download_files(self, model_path: Path, voices_path: Path) -> None:
         """Download model + voices from GitHub releases."""
         logger.info("downloading kokoro files", step="DOWNLOAD", source=_RELEASE_BASE)

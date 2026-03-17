@@ -35,7 +35,7 @@ class ProcessPoolEvent(BaseEvent[ProcessPoolExecutor]):
 
     async def startup(self) -> ProcessPoolExecutor:
         """Create and return the process pool."""
-        max_workers = st.MAX_WORKERS or mp.cpu_count()
+        max_workers = st.system.max_workers or mp.cpu_count()
         return create_process_pool(max_workers=max_workers)
 
     async def shutdown(self, instance: ProcessPoolExecutor) -> None:

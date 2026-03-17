@@ -1,47 +1,16 @@
-x-common: &common
-  build:
-    context: .
-    dockerfile: Dockerfile
-  restart: unless-stopped
-  ports:
-    - "${API_PORT:-5500}:5500"
-  volumes:
-    - models:/app/models
-  env_file:
-    - path: .env
-      required: false
-  healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:5500/health"]
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 60s
-
 services:
-  # CPU mode (default)
-  e-voice:
-    <<: *common
-    container_name: e-voice
-    profiles: ["cpu", "default"]
-    environment:
-      - ENVIRONMENT=PROD
-      - DEBUG=False
-      - WHISPER_DEVICE=cpu
-      - WHISPER_COMPUTE_TYPE=default
-      - WHISPER_MODEL=${WHISPER_MODEL:-mobiuslabsgmbh/faster-whisper-large-v3-turbo}
-
-  # GPU mode (requires nvidia-container-toolkit)
-  e-voice-gpu:
-    <<: *common
-    container_name: e-voice-gpu
-    profiles: ["gpu"]
-    environment:
-      - ENVIRONMENT=PROD
-      - DEBUG=False
-      - WHISPER_DEVICE=cuda
-      - WHISPER_COMPUTE_TYPE=default
-      - WHISPER_MODEL=${WHISPER_MODEL:-mobiuslabsgmbh/faster-whisper-large-v3-turbo}
-      - NVIDIA_VISIBLE_DEVICES=all
+  evoice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evoice
+    hostname: evoice
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-5500}:5500"
+    volumes:
+      - ./data/config:/app/data/config
+      - models:/app/data/models
     deploy:
       resources:
         reservations:
@@ -49,6 +18,12 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5500/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
   models:

@@ -89,7 +89,7 @@ async def transcriptions(request: Request, form_data: FormData, files: Files, gl
 
     whisper: WhisperAdapter = global_dependencies.get("state").whisper
     params = _parse_transcription_params(form_data)
-    model_id = params.model or st.WHISPER_MODEL
+    model_id = params.model or st.stt.model
     word_timestamps = TimestampGranularity.WORD in params.timestamp_granularities
 
     logger.info("transcription request", step="STT", model=model_id, language=params.language, stream=params.stream)
@@ -145,7 +145,7 @@ async def translations(request: Request, form_data: FormData, files: Files, glob
 
     whisper: WhisperAdapter = global_dependencies.get("state").whisper
     params = _parse_translation_params(form_data)
-    model_id = params.model or st.WHISPER_MODEL
+    model_id = params.model or st.stt.model
 
     logger.info("translation request", step="STT", model=model_id, stream=params.stream)
 
@@ -201,65 +201,3 @@ async def get_model(model_id: str, global_dependencies) -> Response:
     )
 
 
-##### EXPERIMENTAL — MODEL MANAGEMENT #####
-
-
-@router.get("/api/ps")
-async def list_loaded(global_dependencies) -> Response:
-    """List currently loaded models."""
-    whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    return Response(
-        status_code=status_codes.HTTP_200_OK,
-        headers={"content-type": "application/json"},
-        description=orjson.dumps({"models": whisper.loaded_models()}).decode(),
-    )
-
-
-@router.post("/api/ps/:model_id")
-async def load_model_endpoint(model_id: str, global_dependencies) -> Response:
-    """Load a model into memory."""
-    whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    if await whisper.is_loaded(model_id):
-        return Response(
-            status_code=status_codes.HTTP_409_CONFLICT,
-            headers={"content-type": "application/json"},
-            description=orjson.dumps({"error": "Model already loaded"}).decode(),
-        )
-
-    logger.info("loading model via API", step="MODEL", model=model_id)
-    await whisper.load(model_id)
-    return Response(
-        status_code=status_codes.HTTP_201_CREATED,
-        headers={"content-type": "application/json"},
-        description=orjson.dumps({"status": "loaded", "model": model_id}).decode(),
-    )
-
-
-@router.delete("/api/ps/:model_id")
-async def unload_model_endpoint(model_id: str, global_dependencies) -> Response:
-    """Unload a model from memory."""
-    whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    if await whisper.unload(model_id):
-        return Response(
-            status_code=status_codes.HTTP_200_OK,
-            headers={"content-type": "application/json"},
-            description=orjson.dumps({"status": "unloaded", "model": model_id}).decode(),
-        )
-    return Response(
-        status_code=status_codes.HTTP_404_NOT_FOUND,
-        headers={"content-type": "application/json"},
-        description=orjson.dumps({"error": "Model not loaded"}).decode(),
-    )
-
-
-@router.post("/api/pull/:model_id")
-async def pull_model(model_id: str, global_dependencies) -> Response:
-    """Download a model from HuggingFace Hub."""
-    whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    logger.info("pulling model via API", step="DOWNLOAD", model=model_id)
-    path = await whisper.download(model_id)
-    return Response(
-        status_code=status_codes.HTTP_201_CREATED,
-        headers={"content-type": "application/json"},
-        description=orjson.dumps({"status": "downloaded", "model": model_id, "path": str(path)}).decode(),
-    )

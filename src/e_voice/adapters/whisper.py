@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 from e_voice.adapters.base import BaseModelAdapter
 from e_voice.core.helpers import audio_duration, format_timestamp, format_timestamp_vtt
 from e_voice.core.logger import logger
-from e_voice.core.settings import VadConfig, WhisperConfig
+from e_voice.core.settings import STTConfig, VADConfig, resolve_compute_type
 from e_voice.core.settings import settings as st
 from e_voice.models.transcription import (
     ResponseFormat,
@@ -32,10 +32,10 @@ class WhisperAdapter(BaseModelAdapter):
 
     __slots__ = ("_models", "_config", "_vad_config", "_gpu_lock")
 
-    def __init__(self, config: WhisperConfig | None = None, vad_config: VadConfig | None = None) -> None:
+    def __init__(self, config: STTConfig | None = None, vad_config: VADConfig | None = None) -> None:
         self._models: dict[str, WhisperModel] = {}
-        self._config = config or st.whisper_config
-        self._vad_config = vad_config or st.vad_config
+        self._config = config or st.stt
+        self._vad_config = vad_config or st.vad
         self._gpu_lock = threading.Lock()
 
     ##### MODEL LIFECYCLE #####
@@ -45,7 +45,7 @@ class WhisperAdapter(BaseModelAdapter):
         if model_id in self._models:
             return
 
-        logger.info("loading whisper model", model=model_id, device=self._config.inference_device, step="MODEL")
+        logger.info("loading whisper model", model=model_id, device=self._config.device.value, step="MODEL")
         model = await asyncio.to_thread(self._lc_create_model, model_id)
         self._models[model_id] = model
         logger.info("whisper model loaded", model=model_id, step="MODEL")
@@ -81,9 +81,9 @@ class WhisperAdapter(BaseModelAdapter):
         """Instantiate WhisperModel (CPU-bound, runs in thread)."""
         return WhisperModel(
             model_id,
-            device=self._config.inference_device,
+            device=self._config.device.value,
             device_index=self._config.device_index,
-            compute_type=self._config.compute_type,
+            compute_type=resolve_compute_type(self._config.device, self._config.compute_type).value,
             cpu_threads=self._config.cpu_threads,
             num_workers=self._config.num_workers,
             download_root=str(st.MODELS_PATH / "stt"),
@@ -91,7 +91,7 @@ class WhisperAdapter(BaseModelAdapter):
 
     def _lc_resolve(self, model_id: str | None) -> WhisperModel:
         """Resolve model_id to a loaded WhisperModel. Raises if not loaded."""
-        mid = model_id or st.WHISPER_MODEL
+        mid = model_id or st.stt.model
         if mid not in self._models:
             raise RuntimeError(f"Model '{mid}' not loaded. Call load() first.")
         return self._models[mid]
@@ -189,7 +189,7 @@ class WhisperAdapter(BaseModelAdapter):
         return model.transcribe(
             audio_data,
             task=task,
-            language=language or st.DEFAULT_LANGUAGE,
+            language=language or st.stt.default_language,
             initial_prompt=prompt,
             temperature=temperature,
             word_timestamps=word_timestamps,

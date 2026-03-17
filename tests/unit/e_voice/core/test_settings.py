@@ -4,7 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from e_voice.core.settings import Settings, VadConfig, WhisperConfig, read_pyproject, resolve_compute_type
+from e_voice.core.settings import (
+    ComputeType,
+    DeviceType,
+    STTConfig,
+    Settings,
+    TTSConfig,
+    VADConfig,
+    read_pyproject,
+    resolve_compute_type,
+)
 
 ##### RESOLVE_COMPUTE_TYPE #####
 
@@ -12,15 +21,15 @@ from e_voice.core.settings import Settings, VadConfig, WhisperConfig, read_pypro
 @pytest.mark.parametrize(
     ("device", "compute_type", "expected"),
     [
-        ("cuda", "default", "float16"),
-        ("cpu", "default", "int8"),
-        ("cuda", "int8", "int8"),
-        ("cpu", "float32", "float32"),
-        ("cuda", "bfloat16", "bfloat16"),
+        (DeviceType.CUDA, ComputeType.DEFAULT, ComputeType.FLOAT16),
+        (DeviceType.CPU, ComputeType.DEFAULT, ComputeType.INT8),
+        (DeviceType.CUDA, ComputeType.INT8, ComputeType.INT8),
+        (DeviceType.CPU, ComputeType.FLOAT32, ComputeType.FLOAT32),
+        (DeviceType.CUDA, ComputeType.BFLOAT16, ComputeType.BFLOAT16),
     ],
     ids=["cuda-default", "cpu-default", "cuda-explicit", "cpu-explicit", "cuda-bfloat16"],
 )
-async def test_resolve_compute_type(device: str, compute_type: str, expected: str) -> None:
+async def test_resolve_compute_type(device: DeviceType, compute_type: ComputeType, expected: ComputeType) -> None:
     assert resolve_compute_type(device, compute_type) == expected
 
 
@@ -28,14 +37,14 @@ async def test_resolve_compute_type(device: str, compute_type: str, expected: st
 
 
 async def test_vad_config_defaults() -> None:
-    cfg = VadConfig()
+    cfg = VADConfig()
     assert cfg.enabled is True
-    assert cfg.threshold == 0.5
-    assert cfg.min_speech_duration_ms == 250
+    assert cfg.threshold == 0.65
+    assert cfg.min_speech_duration_ms == 300
 
 
 async def test_vad_config_to_dict() -> None:
-    cfg = VadConfig(threshold=0.7, min_speech_duration_ms=300)
+    cfg = VADConfig(threshold=0.7, min_speech_duration_ms=300)
     d = cfg.to_dict()
     assert d["threshold"] == 0.7
     assert d["min_speech_duration_ms"] == 300
@@ -43,7 +52,7 @@ async def test_vad_config_to_dict() -> None:
 
 
 async def test_vad_config_to_dict_keys() -> None:
-    d = VadConfig().to_dict()
+    d = VADConfig().to_dict()
     expected_keys = {
         "threshold",
         "min_speech_duration_ms",
@@ -54,21 +63,31 @@ async def test_vad_config_to_dict_keys() -> None:
     assert set(d.keys()) == expected_keys
 
 
-##### WHISPER_CONFIG #####
+##### STT_CONFIG #####
 
 
-async def test_whisper_config_defaults() -> None:
-    cfg = WhisperConfig()
-    assert cfg.inference_device == "cuda"
-    assert cfg.compute_type == "default"
+async def test_stt_config_defaults() -> None:
+    cfg = STTConfig()
+    assert cfg.device == DeviceType.CUDA
+    assert cfg.compute_type == ComputeType.FLOAT16
     assert cfg.num_workers == 1
 
 
-async def test_whisper_config_custom() -> None:
-    cfg = WhisperConfig(model="tiny", inference_device="cpu", compute_type="int8")
+async def test_stt_config_custom() -> None:
+    cfg = STTConfig(model="tiny", device=DeviceType.CPU, compute_type=ComputeType.INT8)
     assert cfg.model == "tiny"
-    assert cfg.inference_device == "cpu"
-    assert cfg.compute_type == "int8"
+    assert cfg.device == DeviceType.CPU
+    assert cfg.compute_type == ComputeType.INT8
+
+
+##### TTS_CONFIG #####
+
+
+async def test_tts_config_defaults() -> None:
+    cfg = TTSConfig()
+    assert cfg.device == DeviceType.CUDA
+    assert cfg.default_voice == "af_heart"
+    assert cfg.default_speed == 1.0
 
 
 ##### READ_PYPROJECT #####
@@ -89,20 +108,17 @@ async def test_settings_class_vars() -> None:
     assert "name" in Settings.PROJECT.get("project", {})
 
 
-async def test_settings_vad_config_property() -> None:
-    st = Settings()
-    cfg = st.vad_config
-    assert isinstance(cfg, VadConfig)
-    assert cfg.enabled is True
+async def test_settings_vad_section() -> None:
+    s = Settings()
+    assert isinstance(s.vad, VADConfig)
+    assert s.vad.enabled is True
 
 
-async def test_settings_whisper_config_property() -> None:
-    st = Settings()
-    cfg = st.whisper_config
-    assert isinstance(cfg, WhisperConfig)
-    assert cfg.model == st.WHISPER_MODEL
+async def test_settings_stt_section() -> None:
+    s = Settings()
+    assert isinstance(s.stt, STTConfig)
 
 
 async def test_settings_api_url() -> None:
-    st = Settings()
-    assert st.api_url.startswith("http://")
+    s = Settings()
+    assert s.api_url.startswith("http://")

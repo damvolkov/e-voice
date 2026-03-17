@@ -13,8 +13,8 @@ class WhisperModelEvent(BaseEvent[WhisperAdapter]):
     async def startup(self) -> WhisperAdapter:
         """Create adapter and load default model."""
         (st.MODELS_PATH / "stt").mkdir(parents=True, exist_ok=True)
-        adapter = WhisperAdapter(st.whisper_config, st.vad_config)
-        await adapter.load(st.WHISPER_MODEL)
+        adapter = WhisperAdapter(st.stt, st.vad)
+        await adapter.load(st.stt.model)
         return adapter
 
     async def shutdown(self, instance: WhisperAdapter) -> None:

@@ -1,0 +1,41 @@
+# =============================================================================
+# e-voice Configuration
+# =============================================================================
+
+system:
+  debug: true
+  environment: dev
+  host: "0.0.0.0"
+  port: 5500
+  max_workers: 4
+
+stt:
+  model: "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+  device: cuda
+  device_index: 0
+  compute_type: float16
+  cpu_threads: 0
+  num_workers: 1
+  default_language: es
+  default_response_format: text
+
+tts:
+  device: cuda
+  default_voice: af_heart
+  default_speed: 1.0
+
+vad:
+  enabled: true
+  threshold: 0.65
+  min_speech_duration_ms: 300
+  max_speech_duration_s: .inf
+  min_silence_duration_ms: 2000
+  speech_pad_ms: 300
+
+streaming:
+  min_duration: 0.75
+  max_buffer_seconds: 45.0
+  trim_seconds: 30.0
+  same_output_threshold: 7
+  no_speech_threshold: 0.45
+  inactivity_flush_seconds: 3.0

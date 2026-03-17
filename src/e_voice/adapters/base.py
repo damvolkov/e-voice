@@ -1,6 +1,7 @@
 """Base adapter for ML model services."""
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 
 class BaseModelAdapter(ABC):
@@ -24,4 +25,9 @@ class BaseModelAdapter(ABC):
     @abstractmethod
     def loaded_models(self) -> list[str]:
         """Return IDs of currently loaded models."""
+        ...
+
+    @abstractmethod
+    async def download(self, model_id: str) -> Path:
+        """Download model files to disk. Returns the model directory."""
         ...

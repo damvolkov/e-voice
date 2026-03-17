@@ -15,10 +15,6 @@ BLUE   := \033[0;34m
 CYAN   := \033[0;36m
 RED    := \033[0;31m
 
--include .env
-ifneq (,$(wildcard .env))
-    $(eval export $(shell sed -ne 's/ *#.*$$//; /./ s/=.*$$// p' .env))
-endif
 export PYTHONPATH := $(CURDIR)/src
 
 NVIDIA_LIBS := $(CURDIR)/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:$(CURDIR)/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib
@@ -111,10 +107,10 @@ check: lint type test
 # Development
 # -----------------------------------------------------------------------------
 dev:
-	@DEBUG=True ENVIRONMENT=DEV LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
+	@LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
 
 prod:
-	@ENVIRONMENT=PROD DEBUG=False LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
+	@LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
 
 run: dev
 
@@ -149,12 +145,12 @@ docker-build:
 	@echo "$(GREEN)=== Build complete ===$(RESET)"
 
 docker-cpu: docker-build
-	@echo "$(CYAN)=== Starting e-voice (CPU) ===$(RESET)"
+	@echo "$(CYAN)=== Starting evoice (CPU) ===$(RESET)"
 	@docker compose -f $(COMPOSE_FILE) --profile cpu up -d
 	@echo "$(GREEN)=== Running at http://localhost:$(SERVICE_PORT) ===$(RESET)"
 
 docker-gpu: docker-build
-	@echo "$(CYAN)=== Starting e-voice (GPU) ===$(RESET)"
+	@echo "$(CYAN)=== Starting evoice (GPU) ===$(RESET)"
 	@docker compose -f $(COMPOSE_FILE) --profile gpu up -d
 	@echo "$(GREEN)=== Running at http://localhost:$(SERVICE_PORT) ===$(RESET)"
 

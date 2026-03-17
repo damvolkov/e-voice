@@ -36,7 +36,7 @@ RUN rm -rf .venv/lib/python*/site-packages/pip* \
 # -----------------------------------------------------------------------------
 # Runtime
 # -----------------------------------------------------------------------------
-FROM ghcr.io/astral-sh/uv:0.8-python3.13-bookworm-slim
+FROM python:3.13-slim-bookworm
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -55,9 +55,9 @@ COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --from=builder --chown=app:app /app/.git /app/.git
 COPY --from=builder --chown=app:app /app/src /app/src
 COPY --from=builder --chown=app:app /app/pyproject.toml /app/pyproject.toml
-COPY --from=builder --chown=app:app /app/uv.lock /app/uv.lock
 
-RUN mkdir -p /app/models && chown app:app /app/models
+RUN mkdir -p /app/data/models /app/data/config && \
+    chown -R app:app /app/data
 
 USER 1000
 
@@ -67,11 +67,6 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-
-ENV WHISPER_DEVICE="cuda"
-ENV WHISPER_COMPUTE_TYPE="default"
-ENV WHISPER_MODEL="mobiuslabsgmbh/faster-whisper-large-v3-turbo"
-ENV MODELS_PATH="/app/models"
 
 EXPOSE 5500
 
