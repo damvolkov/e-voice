@@ -50,6 +50,8 @@ dependencies = [
     "httpx-ws>=0.7.0",
     # Async I/O
     "aiofiles>=24.1.0",
+    "nvidia-cublas-cu12>=12.9.1.4",
+    "nvidia-cudnn-cu12>=9.20.0.48",
 ]
 
 [project.scripts]
@@ -137,6 +139,14 @@ unresolved-import = "error"
 [tool.coverage.run]
 source = ["e_voice"]
 branch = true
+omit = [
+    "src/e_voice/main.py",
+    "src/e_voice/api/*",
+    "src/e_voice/websockets/*",
+    "src/e_voice/middlewares/*",
+    "src/e_voice/core/router.py",
+    "src/e_voice/events/*",
+]
 
 [tool.coverage.report]
 fail_under = 90

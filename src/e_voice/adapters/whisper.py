@@ -1,6 +1,7 @@
 """Faster-whisper adapter — model lifecycle, transcription, translation, formatting."""
 
 import asyncio
+import threading
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -29,12 +30,13 @@ _HF_ALLOW_PATTERNS = ["config.json", "model.bin", "tokenizer.json", "vocabulary.
 class WhisperAdapter(BaseModelAdapter):
     """Manages faster-whisper model lifecycle and inference."""
 
-    __slots__ = ("_models", "_config", "_vad_config")
+    __slots__ = ("_models", "_config", "_vad_config", "_gpu_lock")
 
     def __init__(self, config: WhisperConfig | None = None, vad_config: VadConfig | None = None) -> None:
         self._models: dict[str, WhisperModel] = {}
         self._config = config or st.whisper_config
         self._vad_config = vad_config or st.vad_config
+        self._gpu_lock = threading.Lock()
 
     ##### MODEL LIFECYCLE #####
 
@@ -163,11 +165,12 @@ class WhisperAdapter(BaseModelAdapter):
         vad_filter: bool,
         hotwords: str | None,
     ) -> tuple[list[Segment], TranscriptionInfo]:
-        """Execute transcription and materialize segments (CPU-bound thread)."""
-        segments_gen, info = self._tr_invoke(
-            model, audio_data, task, language, prompt, temperature, word_timestamps, vad_filter, hotwords
-        )
-        return list(segments_gen), info
+        """Execute transcription and materialize segments (CPU-bound thread). Serialized via lock."""
+        with self._gpu_lock:
+            segments_gen, info = self._tr_invoke(
+                model, audio_data, task, language, prompt, temperature, word_timestamps, vad_filter, hotwords
+            )
+            return list(segments_gen), info
 
     def _tr_invoke(
         self,

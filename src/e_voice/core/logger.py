@@ -91,7 +91,7 @@ def configure_logging(level: str = "info") -> None:
 
     logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO), format="%(message)s")
 
-    for noisy in ("websockets", "httpx", "httpcore", "hpack", "robyn"):
+    for noisy in ("websockets", "httpx", "httpcore", "hpack", "robyn", "faster_whisper"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

@@ -21,9 +21,12 @@ ifneq (,$(wildcard .env))
 endif
 export PYTHONPATH := $(CURDIR)/src
 
+NVIDIA_LIBS := $(CURDIR)/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:$(CURDIR)/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib
+export LD_LIBRARY_PATH := $(NVIDIA_LIBS):$(LD_LIBRARY_PATH)
+
 COMPOSE_FILE := compose.yml
 
-.PHONY: help install sync lock lint format typecheck test dev prod run \
+.PHONY: help install sync lock lint type test test-integration check dev prod run \
         stt tts docker-build docker-cpu docker-gpu docker-down log clean
 
 # -----------------------------------------------------------------------------
@@ -90,25 +93,28 @@ lock:
 # Quality & Testing
 # -----------------------------------------------------------------------------
 lint:
-	@uv run ruff check --fix $(PACKAGE)
+	@uv run ruff check --fix $(PACKAGE) tests/
+	@uv run ruff format $(PACKAGE) tests/
 
-format:
-	@uv run ruff format $(PACKAGE)
-
-typecheck:
+type:
 	@uv run ty check
 
 test:
-	@uv run pytest tests/unit -v
+	@uv run pytest tests/unit -n auto -v -m 'not slow' --cov --cov-report=term-missing
+
+test-integration:
+	@uv run pytest tests/integration -v -m slow
+
+check: lint type test
 
 # -----------------------------------------------------------------------------
 # Development
 # -----------------------------------------------------------------------------
 dev:
-	@DEBUG=True ENVIRONMENT=DEV uv run python -c "from e_voice.main import main; main()"
+	@DEBUG=True ENVIRONMENT=DEV LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
 
 prod:
-	@ENVIRONMENT=PROD DEBUG=False uv run python -c "from e_voice.main import main; main()"
+	@ENVIRONMENT=PROD DEBUG=False LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
 
 run: dev
 
@@ -116,13 +122,17 @@ run: dev
 # Live test (requires running server)
 # Deps: sudo apt install ffmpeg && cargo install websocat
 # -----------------------------------------------------------------------------
+STT_LANG ?= es
+STT_FMT ?= text
+
 stt:
 	@command -v ffmpeg >/dev/null 2>&1 || { echo "$(RED)ffmpeg not found. Install: sudo apt install ffmpeg$(RESET)"; exit 1; }
 	@command -v websocat >/dev/null 2>&1 || { echo "$(RED)websocat not found. Install: cargo install websocat$(RESET)"; exit 1; }
-	@echo "$(CYAN)=== STT: mic → ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions ===$(RESET)"
+	@echo "$(CYAN)=== STT: mic → ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions?language=$(STT_LANG) ===$(RESET)"
 	@echo "$(YELLOW)Press Ctrl+C to stop$(RESET)"
-	@ffmpeg -loglevel quiet -f pulse -i default -ac 1 -ar 16000 -f s16le - \
-		| websocat --binary "ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions"
+	@ffmpeg -loglevel quiet -f pulse -i default -ac 1 -ar 16000 -f s16le pipe:1 \
+		| uv run python -uc "import sys,base64;[print(base64.b64encode(c).decode(),flush=True)for c in iter(lambda:sys.stdin.buffer.read(32000),b'')]" \
+		| websocat "ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions?language=$(STT_LANG)&response_format=$(STT_FMT)"
 
 tts:
 	@command -v websocat >/dev/null 2>&1 || { echo "$(RED)websocat not found. Install: cargo install websocat$(RESET)"; exit 1; }

@@ -15,9 +15,7 @@ async def test_ws_speech_returns_audio_deltas(
     events: list[dict] = []
 
     async with audioeval.tts.ws() as ws:
-        await ws.send_text(
-            orjson.dumps({"input": "Hello world.", "voice": "af_heart"}).decode()
-        )
+        await ws.send_text(orjson.dumps({"input": "Hello world.", "voice": "af_heart"}).decode())
 
         while True:
             try:
@@ -45,9 +43,7 @@ async def test_ws_speech_done_event(
     events: list[dict] = []
 
     async with audioeval.tts.ws() as ws:
-        await ws.send_text(
-            orjson.dumps({"input": "Done event test.", "voice": "af_heart"}).decode()
-        )
+        await ws.send_text(orjson.dumps({"input": "Done event test.", "voice": "af_heart"}).decode())
 
         while True:
             try:
@@ -70,11 +66,13 @@ async def test_ws_speech_custom_voice_and_speed(
 
     async with audioeval.tts.ws() as ws:
         await ws.send_text(
-            orjson.dumps({
-                "input": "Speed test.",
-                "voice": "af_heart",
-                "speed": 1.5,
-            }).decode()
+            orjson.dumps(
+                {
+                    "input": "Speed test.",
+                    "voice": "af_heart",
+                    "speed": 1.5,
+                }
+            ).decode()
         )
 
         while True:
@@ -96,9 +94,7 @@ async def test_ws_speech_empty_input_returns_error(
 ) -> None:
     """WebSocket rejects empty input with error message."""
     async with audioeval.tts.ws() as ws:
-        await ws.send_text(
-            orjson.dumps({"input": "", "voice": "af_heart"}).decode()
-        )
+        await ws.send_text(orjson.dumps({"input": "", "voice": "af_heart"}).decode())
 
         text = await ws.receive_text(timeout=5.0)
         body = orjson.loads(text)
@@ -132,9 +128,7 @@ async def test_ws_speech_binary_message_ignored(
         await ws.send_bytes(b"\x00\x01\x02\x03")
 
         # Send valid request after
-        await ws.send_text(
-            orjson.dumps({"input": "After binary.", "voice": "af_heart"}).decode()
-        )
+        await ws.send_text(orjson.dumps({"input": "After binary.", "voice": "af_heart"}).decode())
 
         while True:
             try:
@@ -158,10 +152,12 @@ async def test_ws_speech_combined_audio_non_trivial(
 
     async with audioeval.tts.ws() as ws:
         await ws.send_text(
-            orjson.dumps({
-                "input": "The quick brown fox jumps over the lazy dog.",
-                "voice": "af_heart",
-            }).decode()
+            orjson.dumps(
+                {
+                    "input": "The quick brown fox jumps over the lazy dog.",
+                    "voice": "af_heart",
+                }
+            ).decode()
         )
 
         while True:

@@ -145,6 +145,14 @@ class Settings(BaseSettings):
     # WebSocket
     WS_MAX_INACTIVITY_SECONDS: float = 3.0
 
+    # Streaming STT
+    STREAMING_MIN_DURATION: float = 1.0
+    STREAMING_MAX_BUFFER_SECONDS: float = 45.0
+    STREAMING_TRIM_SECONDS: float = 30.0
+    STREAMING_SAME_OUTPUT_THRESHOLD: int = 7
+    STREAMING_NO_SPEECH_THRESHOLD: float = 0.45
+    STREAMING_INACTIVITY_FLUSH_SECONDS: float = 3.0
+
     @property
     def api_url(self) -> str:
         return f"http://{self.API_HOST}:{self.API_PORT}"

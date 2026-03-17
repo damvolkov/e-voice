@@ -22,11 +22,13 @@ class BaseWebSocket:
 
     def on(self, event: WSEventType) -> Callable:
         """Decorator to register event handlers."""
+
         def decorator(handler: Callable) -> Callable:
             if event not in ("connect", "message", "close"):
                 raise ValueError(f"Invalid event type: {event}")
             self._handlers[event] = handler
             return handler
+
         return decorator
 
     @property
@@ -79,6 +81,4 @@ class WebSocketHandler:
         params = dict(inspect.signature(handler).parameters)
         is_async = asyncio.iscoroutinefunction(handler)
 
-        websocket.methods[event] = FunctionInfo(
-            handler, is_async, len(params), params, kwargs={}
-        )
+        websocket.methods[event] = FunctionInfo(handler, is_async, len(params), params, kwargs={})

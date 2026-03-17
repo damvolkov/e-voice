@@ -1,11 +1,10 @@
 """Tests for lifespan management."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
 from e_voice.core.lifespan import BaseEvent, Lifespan, State, create_lifespan
-
 
 # -----------------------------------------------------------------------------
 # State Tests

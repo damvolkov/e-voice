@@ -7,13 +7,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/e_voice/main.py",
             "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src",
-                "DEBUG": "True",
-                "ENVIRONMENT": "DEV",
-                "WHISPER_DEVICE": "cuda",
-                "WHISPER_COMPUTE_TYPE": "float16",
-                "WHISPER_MODEL": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+                "LD_LIBRARY_PATH": "${workspaceFolder}/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:${workspaceFolder}/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib"
             },
             "justMyCode": false,
             "console": "integratedTerminal"
@@ -24,13 +21,11 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/e_voice/main.py",
             "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src",
-                "DEBUG": "True",
-                "ENVIRONMENT": "DEV",
                 "WHISPER_DEVICE": "cpu",
-                "WHISPER_COMPUTE_TYPE": "int8",
-                "WHISPER_MODEL": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+                "WHISPER_COMPUTE_TYPE": "int8"
             },
             "justMyCode": false,
             "console": "integratedTerminal"
