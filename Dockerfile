@@ -1,6 +1,5 @@
 # =============================================================================
-# e-voice Dockerfile
-# Single image for CPU + GPU (nvidia-container-toolkit injects CUDA at runtime)
+# e-voice Dockerfile — self-contained: API + Gradio UI + nginx gateway
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -29,22 +28,18 @@ COPY src/ src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-# Bake version into package metadata so runtime doesn't need git
-RUN .venv/bin/python -c "import importlib.metadata; print(importlib.metadata.version('e-voice'))" > /app/.version
-
-# Trim build artifacts
 RUN rm -rf .venv/lib/python*/site-packages/{pip,setuptools}* .venv/include
 
 # -----------------------------------------------------------------------------
-# Runtime — minimal, no git, no build tools
+# Runtime — API + Gradio + nginx (single container)
 # -----------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl libsndfile1 && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends curl libsndfile1 nginx && \
+    rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled/default
 
 WORKDIR /app
 
@@ -56,7 +51,21 @@ COPY --from=builder --chown=app:app /app/src src/
 COPY --from=builder --chown=app:app /app/pyproject.toml pyproject.toml
 COPY --from=builder --chown=app:app /app/README.md README.md
 
+# Nginx config
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Default config.yaml (user can override via volume mount)
 RUN mkdir -p data/models data/config && chown -R app:app data/
+COPY --chown=app:app data/config/config.yaml data/config/config.yaml
+
+# Assets (logo for Gradio UI)
+COPY --chown=app:app assets/ assets/
+
+# Entrypoint
+COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
+
+# nginx needs write access to its runtime dirs
+RUN chown -R app:app /var/log/nginx /var/lib/nginx /run
 
 USER 1000
 
@@ -65,9 +74,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-EXPOSE 5500 5600
+EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:5500/health || exit 1
+    CMD curl -f http://localhost:80/health || exit 1
 
-CMD ["python", "-m", "e_voice"]
+ENTRYPOINT ["/entrypoint.sh"]

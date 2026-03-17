@@ -16,19 +16,31 @@
 ## Quick Start
 
 ```bash
+# Docker (one command, self-contained)
+docker run -p 5500:80 --gpus all ghcr.io/damvolkov/e-voice:latest
+```
+
+Open `http://localhost:5500` — Gradio UI, API, docs, all on one port.
+
+```bash
+# With custom config
+mkdir -p data/config
+curl -o data/config/config.yaml https://raw.githubusercontent.com/damvolkov/e-voice/main/data/config/config.yaml
+# Edit data/config/config.yaml as needed
+docker run -p 5500:80 --gpus all -v ./data/config:/app/data/config ghcr.io/damvolkov/e-voice:latest
+```
+
+```bash
 # Local development
 make install
 make dev              # API on :5500, Gradio UI on :5600
-
-# Docker (nginx gateway unifies everything on :5500)
-docker compose up -d  # → localhost:5500 (UI + API + docs)
 ```
 
 | Service | Local | Docker |
 |---------|-------|--------|
+| Gradio UI | `localhost:5600` | `localhost:5500` |
 | API | `localhost:5500/v1/...` | `localhost:5500/v1/...` |
 | Docs | `localhost:5500/docs` | `localhost:5500/docs` |
-| Gradio UI | `localhost:5600` | `localhost:5500` (root) |
 | WebSocket STT | `ws://localhost:5500/v1/audio/transcriptions` | Same |
 | WebSocket TTS | `ws://localhost:5500/v1/audio/speech` | Same |
 
