@@ -1,5 +1,3 @@
-"""Concurrency tests — verify STT and TTS handle parallel requests."""
-
 import asyncio
 
 import httpx
@@ -13,7 +11,6 @@ async def test_concurrent_stt_transcriptions(
     en_sample,
     es_sample,
 ) -> None:
-    """Two STT WebSocket sessions running in parallel."""
     async def transcribe(sample, params=None):
         async with audioeval.stt.ws(sample=sample, **({"params": params} if params else {})) as session:
             await session.send_sample(sample, chunk_ms=200)
@@ -32,7 +29,6 @@ async def test_concurrent_stt_transcriptions(
 
 
 async def test_concurrent_tts_requests(http_client: httpx.AsyncClient) -> None:
-    """Two TTS requests in parallel."""
     async def synthesize(text: str, voice: str):
         resp = await http_client.post(
             "/v1/audio/speech",
@@ -58,7 +54,6 @@ async def test_concurrent_stt_and_tts(
     en_sample,
     http_client: httpx.AsyncClient,
 ) -> None:
-    """STT and TTS running simultaneously."""
     async def transcribe():
         async with audioeval.stt.ws(sample=en_sample) as session:
             await session.send_sample(en_sample, chunk_ms=200)
@@ -68,7 +63,12 @@ async def test_concurrent_stt_and_tts(
     async def synthesize():
         return await http_client.post(
             "/v1/audio/speech",
-            json={"input": "Testing concurrent access.", "model": "kokoro", "voice": "af_heart", "response_format": "wav"},
+            json={
+                "input": "Testing concurrent access.",
+                "model": "kokoro",
+                "voice": "af_heart",
+                "response_format": "wav",
+            },
             timeout=30.0,
         )
 

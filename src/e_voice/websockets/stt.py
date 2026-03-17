@@ -20,10 +20,6 @@ from e_voice.streaming.transcriber import (
 
 SAMPLES_PER_SECOND = 16_000
 
-##### SESSION REGISTRY #####
-
-_SESSIONS: dict[str, SessionState] = {}
-
 ws_stt = BaseWebSocket("/v1/audio/transcriptions")
 
 
@@ -58,12 +54,13 @@ def _format_event(event: StreamingEvent, response_format: str) -> str:
 
 
 @ws_stt.on("connect")
-def on_connect(ws: WebSocketConnector) -> str:
+def on_connect(ws: WebSocketConnector, global_dependencies) -> str:
     lang = ws.query_params.get("language", None) or st.stt.default_language
     fmt = ws.query_params.get("response_format", None) or st.stt.default_response_format.value
     model = ws.query_params.get("model", None) or st.stt.model
 
-    _SESSIONS[ws.id] = SessionState(
+    sessions: dict[str, SessionState] = global_dependencies.get("state").stt_sessions
+    sessions[ws.id] = SessionState(
         language=lang if lang != "auto" else None,
         model_id=model,
         response_format=fmt,
@@ -77,10 +74,11 @@ def on_connect(ws: WebSocketConnector) -> str:
 async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> str:
     """Receive base64 PCM16 chunk, process through streaming pipeline."""
     try:
-        if (session := _SESSIONS.get(ws.id)) is None:
+        state = global_dependencies.get("state")
+        if (session := state.stt_sessions.get(ws.id)) is None:
             return orjson.dumps({"error": "no session"}).decode()
 
-        whisper = global_dependencies.get("state").whisper
+        whisper = state.whisper
 
         raw_bytes = base64.b64decode(msg)
         audio_samples = _pcm16_to_float32(raw_bytes)
@@ -99,8 +97,9 @@ async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> s
 
 
 @ws_stt.on("close")
-def on_close(ws: WebSocketConnector) -> str:
-    if (session := _SESSIONS.pop(ws.id, None)) is not None:
+def on_close(ws: WebSocketConnector, global_dependencies) -> str:
+    sessions: dict[str, SessionState] = global_dependencies.get("state").stt_sessions
+    if (session := sessions.pop(ws.id, None)) is not None:
         event = flush_session(session)
         if event.new_confirmed:
             logger.info(event.new_confirmed, step="STT", final=True)

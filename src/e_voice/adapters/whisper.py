@@ -136,10 +136,10 @@ class WhisperAdapter(BaseModelAdapter):
         vad_filter: bool = False,
         hotwords: str | None = None,
     ) -> AsyncGenerator[Segment]:
-        """Yield segments one at a time for streaming."""
+        """Yield segments one at a time for SSE streaming. GPU-locked and thread-offloaded."""
         model = self._lc_resolve(model_id)
-        segments_gen, _info = await asyncio.to_thread(
-            self._tr_invoke,
+        segments, _info = await asyncio.to_thread(
+            self._tr_run,
             model,
             audio_data,
             "transcribe",
@@ -150,7 +150,7 @@ class WhisperAdapter(BaseModelAdapter):
             vad_filter,
             hotwords,
         )
-        for segment in segments_gen:
+        for segment in segments:
             yield segment
 
     def _tr_run(

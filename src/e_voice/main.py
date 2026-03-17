@@ -35,6 +35,7 @@ websockets.register(ws_tts)
 async def startup() -> None:
     """Startup: lifespan first, then inject WS dependencies, then Gradio UI."""
     await lifespan.startup()
+    lifespan.state.stt_sessions = {}
     websockets.inject_dependencies()
     launch_gradio()
 
