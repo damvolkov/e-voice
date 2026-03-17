@@ -17,7 +17,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY .git/ ./.git/
-COPY uv.lock pyproject.toml ./
+COPY uv.lock pyproject.toml README.md ./
 
 RUN git config --global --add safe.directory /app
 
