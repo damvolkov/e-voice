@@ -46,7 +46,7 @@ class MiddlewareHandler:
         middleware = middleware_cls(self._app)
         self._middlewares.append(middleware)
         self._apply_middleware(middleware)
-        logger.info(f"Registered middleware: {middleware_cls.__name__}")
+        logger.info("registered middleware", name=middleware_cls.__name__, step="START")
         return self
 
     def _apply_middleware(self, middleware: BaseMiddleware) -> None:

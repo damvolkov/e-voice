@@ -65,3 +65,27 @@ def test_create_process_pool_respects_max_workers(workers: int) -> None:
         assert pool._max_workers == workers  # type: ignore[unresolved-attribute]
     finally:
         pool.shutdown(wait=True)
+
+
+##### PROCESS POOL EVENT #####
+
+
+async def test_process_pool_event_startup(mocker) -> None:
+    from e_voice.events.process_pool import ProcessPoolEvent
+
+    mocker.patch("e_voice.events.process_pool.st", mocker.MagicMock(system=mocker.MagicMock(max_workers=2)))
+    event = ProcessPoolEvent()
+    pool = await event.startup()
+    try:
+        assert isinstance(pool, ProcessPoolExecutor)
+    finally:
+        pool.shutdown(wait=True)
+
+
+async def test_process_pool_event_shutdown() -> None:
+    from e_voice.events.process_pool import ProcessPoolEvent
+
+    event = ProcessPoolEvent()
+    pool = create_process_pool(max_workers=1)
+    await event.shutdown(pool)
+    assert pool._broken or not pool._processes

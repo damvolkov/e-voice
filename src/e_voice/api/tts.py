@@ -1,11 +1,9 @@
 """OpenAI-compatible Text-to-Speech API — speech synthesis, voice listing."""
 
-import orjson
-from robyn import Request, Response, SSEMessage, SSEResponse, StreamingResponse, status_codes
-from robyn.types import Body
+from robyn import Headers, Request, Response, SSEMessage, SSEResponse, StreamingResponse, status_codes
 
 from e_voice.adapters.kokoro import _VOICE_LANG_MAP, KokoroAdapter
-from e_voice.core.helpers import encode_audio, encode_audio_chunk, float32_to_base64_pcm16
+from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.router import Router
 from e_voice.models.tts import (
@@ -33,62 +31,55 @@ _CONTENT_TYPE_MAP: dict[str, str] = {
 
 
 @router.post("/audio/speech")
-async def speech(request: Request, body: Body, global_dependencies):
+async def speech(request: Request, body: SpeechRequest, global_dependencies):
     """Synthesize speech from text (OpenAI-compatible). Supports streaming."""
-    try:
-        params = SpeechRequest.model_validate_json(body)
-    except Exception as exc:
-        return Response(
-            status_code=status_codes.HTTP_422_UNPROCESSABLE_ENTITY,
-            headers={"content-type": "application/json"},
-            description=orjson.dumps({"error": str(exc)}).decode(),
-        )
-
     kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
-    fmt = params.response_format.value
+    fmt = body.response_format.value
     content_type = _CONTENT_TYPE_MAP.get(fmt, "application/octet-stream")
 
-    logger.info("speech request", step="TTS", voice=params.voice, stream=params.stream, format=fmt)
+    logger.info("speech request", step="TTS", voice=body.voice, stream=body.stream, format=fmt)
 
-    if params.stream and params.stream_format == StreamFormat.SSE:
+    if body.stream and body.stream_format == StreamFormat.SSE:
 
         async def sse_generator():
             async for samples, _sr in kokoro.synthesize_stream(
-                params.input,
-                voice=params.voice,
-                speed=params.speed,
-                lang=params.lang,
+                body.input,
+                voice=body.voice,
+                speed=body.speed,
+                lang=body.lang,
             ):
-                audio_b64 = float32_to_base64_pcm16(samples)
+                audio_b64 = Audio.float32_to_base64_pcm16(samples)
                 yield SSEMessage(data=SpeechAudioDeltaEvent(audio=audio_b64).model_dump_json())
             yield SSEMessage(data=SpeechAudioDoneEvent().model_dump_json())
 
         return SSEResponse(sse_generator())
 
-    if params.stream:
+    if body.stream:
 
         async def audio_generator():
             async for samples, sr in kokoro.synthesize_stream(
-                params.input,
-                voice=params.voice,
-                speed=params.speed,
-                lang=params.lang,
+                body.input,
+                voice=body.voice,
+                speed=body.speed,
+                lang=body.lang,
             ):
-                yield encode_audio_chunk(samples, sr, fmt)
+                yield Audio.encode_chunk(samples, sr, fmt)
 
+        headers = Headers({"Content-Type": content_type})
         return StreamingResponse(
             audio_generator(),
             status_code=status_codes.HTTP_200_OK,
-            headers={"content-type": content_type, "transfer-encoding": "chunked"},
+            headers=headers,
+            media_type=content_type,
         )
 
     samples, sr = await kokoro.synthesize(
-        params.input,
-        voice=params.voice,
-        speed=params.speed,
-        lang=params.lang,
+        body.input,
+        voice=body.voice,
+        speed=body.speed,
+        lang=body.lang,
     )
-    audio_bytes = encode_audio(samples, sr, fmt)
+    audio_bytes = Audio.encode(samples, sr, fmt)
 
     logger.info("speech complete", step="TTS", size=len(audio_bytes))
     return Response(
@@ -97,6 +88,10 @@ async def speech(request: Request, body: Body, global_dependencies):
         description=audio_bytes,
     )
 
+
+##### TAXONOMICAL ALIASES #####
+
+router.alias("/audio/speech", "/tts/http", "/tts/sse", "/tts/stream")
 
 ##### GET /v1/audio/voices #####
 

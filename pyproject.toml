@@ -45,6 +45,8 @@ dependencies = [
     "httpx-ws>=0.7.0",
     "gradio>=6.9.0",
     "websockets>=16.0",
+    "nvidia-cublas-cu12>=12.9.1.4",
+    "nvidia-cudnn-cu12>=9.20.0.48",
 ]
 
 [project.scripts]
@@ -96,7 +98,7 @@ test-integration = "python -m pytest tests/integration -v -m slow"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
@@ -106,6 +108,7 @@ addopts = "--import-mode=importlib"
 line-length = 120
 target-version = "py312"
 src = ["src"]
+exclude = ["source/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
@@ -129,7 +132,6 @@ branch = true
 omit = [
     "src/e_voice/main.py",
     "src/e_voice/front.py",
-    "src/e_voice/core/router.py",
 ]
 
 [tool.coverage.report]

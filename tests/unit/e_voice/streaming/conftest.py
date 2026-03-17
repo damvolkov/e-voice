@@ -36,9 +36,9 @@ class MockTranscriptionInfo:
     language_probability: float = 0.9
     duration: float = 1.0
     duration_after_vad: float = 1.0
-    all_language_probs: list = None
-    transcription_options: dict = None
-    vad_options: dict = None
+    all_language_probs: list | None = None
+    transcription_options: dict | None = None
+    vad_options: dict | None = None
 
     def __post_init__(self) -> None:
         if self.all_language_probs is None:

@@ -21,66 +21,6 @@ from e_voice.models.system import (
 router = Router(__file__, prefix="/v1")
 
 
-##### HELPERS #####
-
-
-def _dir_size_mb(path: Path) -> float:
-    """Total size of directory contents in MB."""
-    if not path.exists():
-        return 0.0
-    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / (1024 * 1024)
-
-
-def _scan_stt_models() -> list[ModelEntry]:
-    """Scan data/models/stt/ for downloaded STT models (HuggingFace cache layout)."""
-    stt_dir = st.MODELS_PATH / "stt"
-    if not stt_dir.exists():
-        return []
-    return [
-        ModelEntry(
-            id=d.name.removeprefix("models--").replace("--", "/"),
-            service="stt",
-            path=str(d),
-            size_mb=round(_dir_size_mb(d), 1),
-        )
-        for d in sorted(stt_dir.iterdir())
-        if d.is_dir() and d.name.startswith("models--")
-    ]
-
-
-def _scan_tts_models() -> list[ModelEntry]:
-    """Scan data/models/tts/ for downloaded TTS models."""
-    tts_dir = st.MODELS_PATH / "tts"
-    if not tts_dir.exists():
-        return []
-    onnx_files = list(tts_dir.glob("*.onnx"))
-    if not onnx_files:
-        return []
-    return [
-        ModelEntry(
-            id="kokoro",
-            service="tts",
-            path=str(tts_dir),
-            size_mb=round(_dir_size_mb(tts_dir), 1),
-        )
-    ]
-
-
-def _json_response(status_code: int, body: str) -> Response:
-    return Response(
-        status_code=status_code,
-        headers={"content-type": "application/json"},
-        description=body,
-    )
-
-
-def _json_error(status_code: int, error: str, detail: str | None = None) -> Response:
-    return _json_response(
-        status_code,
-        ErrorResponse(error=error, detail=detail).model_dump_json(),
-    )
-
-
 ##### ENDPOINTS #####
 
 
@@ -101,9 +41,10 @@ async def download_model(body: DownloadRequest, global_dependencies) -> Response
 
         logger.info("model downloaded", step="DOWNLOAD", service=body.service.value, model=body.model)
 
-        return _json_response(
-            status_codes.HTTP_201_CREATED,
-            DownloadResponse(
+        return Response(
+            status_code=status_codes.HTTP_201_CREATED,
+            headers={"content-type": "application/json"},
+            description=DownloadResponse(
                 status="downloaded",
                 service=body.service.value,
                 model=body.model,
@@ -113,25 +54,66 @@ async def download_model(body: DownloadRequest, global_dependencies) -> Response
 
     except (OSError, RuntimeError) as exc:
         logger.error("download failed", step="DOWNLOAD", service=body.service.value, model=body.model, error=str(exc))
-        return _json_error(
-            status_codes.HTTP_502_BAD_GATEWAY,
-            f"Download failed for {body.service.value} model '{body.model}'",
-            str(exc),
+        return Response(
+            status_code=status_codes.HTTP_502_BAD_GATEWAY,
+            headers={"content-type": "application/json"},
+            description=ErrorResponse(
+                error=f"Download failed for {body.service.value} model '{body.model}'",
+                detail=str(exc),
+            ).model_dump_json(),
         )
     except Exception as exc:
         logger.error("download error", step="DOWNLOAD", error=str(exc))
-        return _json_error(
-            status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
-            "Internal error during download",
-            str(exc),
+        return Response(
+            status_code=status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
+            headers={"content-type": "application/json"},
+            description=ErrorResponse(
+                error="Internal error during download",
+                detail=str(exc),
+            ).model_dump_json(),
         )
+
+
+def _dir_size_mb(path: Path) -> float:
+    """Total size of directory contents in MB."""
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / (1024 * 1024)
 
 
 @router.get("/models/list")
 async def list_downloaded_models() -> Response:
     """List all downloaded models on disk, grouped by service."""
-    resp = ModelsListResponse(
-        stt=_scan_stt_models(),
-        tts=_scan_tts_models(),
+    stt_dir = st.MODELS_PATH / "stt"
+    stt_models = (
+        [
+            ModelEntry(
+                id=d.name.removeprefix("models--").replace("--", "/"),
+                service="stt",
+                path=str(d),
+                size_mb=round(_dir_size_mb(d), 1),
+            )
+            for d in sorted(stt_dir.iterdir())
+            if d.is_dir() and d.name.startswith("models--")
+        ]
+        if stt_dir.exists()
+        else []
     )
-    return _json_response(status_codes.HTTP_200_OK, resp.model_dump_json())
+
+    tts_dir = st.MODELS_PATH / "tts"
+    tts_models = (
+        [
+            ModelEntry(
+                id="kokoro",
+                service="tts",
+                path=str(tts_dir),
+                size_mb=round(_dir_size_mb(tts_dir), 1),
+            )
+        ]
+        if tts_dir.exists() and any(tts_dir.glob("*.onnx"))
+        else []
+    )
+
+    return Response(
+        status_code=status_codes.HTTP_200_OK,
+        headers={"content-type": "application/json"},
+        description=ModelsListResponse(stt=stt_models, tts=tts_models).model_dump_json(),
+    )

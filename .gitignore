@@ -25,5 +25,8 @@ data/*
 notebook/
 tests/notebook/
 
+# Reference projects (third-party repos)
+source/
+
 # Legacy paths
 /models/

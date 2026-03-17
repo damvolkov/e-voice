@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Production-grade Speech API</strong> — STT (faster-whisper) + TTS (Kokoro-ONNX)<br>
-  Streaming, WebSocket, and OpenAI-compatible endpoints
+  HTTP, SSE, chunked streaming, and WebSocket transports
 </p>
 
 <p align="center">
@@ -16,19 +16,10 @@
 ## Quick Start
 
 ```bash
-# Docker (one command, self-contained)
 docker run -p 5500:80 --gpus all ghcr.io/damvolkov/e-voice:latest
 ```
 
-Open `http://localhost:5500` — Gradio UI, API, docs, all on one port.
-
-```bash
-# With custom config
-mkdir -p data/config
-curl -o data/config/config.yaml https://raw.githubusercontent.com/damvolkov/e-voice/main/data/config/config.yaml
-# Edit data/config/config.yaml as needed
-docker run -p 5500:80 --gpus all -v ./data/config:/app/data/config ghcr.io/damvolkov/e-voice:latest
-```
+Open `http://localhost:5500` — Gradio UI, API, and docs on one port.
 
 ```bash
 # Local development
@@ -41,41 +32,49 @@ make dev              # API on :5500, Gradio UI on :5600
 | Gradio UI | `localhost:5600` | `localhost:5500` |
 | API | `localhost:5500/v1/...` | `localhost:5500/v1/...` |
 | Docs | `localhost:5500/docs` | `localhost:5500/docs` |
-| WebSocket STT | `ws://localhost:5500/v1/audio/transcriptions` | Same |
-| WebSocket TTS | `ws://localhost:5500/v1/audio/speech` | Same |
+
+---
+
+## Transport Map
+
+Every endpoint is available via four transport protocols. Taxonomical aliases make the transport explicit in the URL.
+
+| Service | Transport | Endpoint | Alias | Content-Type |
+|---------|-----------|----------|-------|-------------|
+| **STT** | HTTP | `POST /v1/audio/transcriptions` | `/v1/stt/http` | `application/json`, `text/plain` |
+| **STT** | SSE | `POST /v1/audio/transcriptions` + `stream=true` | `/v1/stt/sse` | `text/event-stream` |
+| **STT** | WebSocket | `WS /v1/audio/transcriptions` | `WS /v1/stt/ws` | text frames (JSON) |
+| **TTS** | HTTP | `POST /v1/audio/speech` + `stream=false` | `/v1/tts/http` | `audio/*` |
+| **TTS** | SSE | `POST /v1/audio/speech` + `stream_format=sse` | `/v1/tts/sse` | `text/event-stream` |
+| **TTS** | Streaming | `POST /v1/audio/speech` + `stream=true` | `/v1/tts/stream` | `audio/*` (chunked) |
+| **TTS** | WebSocket | `WS /v1/audio/speech` | `WS /v1/tts/ws` | text frames (JSON) |
+
+Aliases point to the exact same handler — zero overhead, full compatibility.
+
+---
 
 ## API Reference
 
 Base URL: `http://localhost:5500`
 
-### Health
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check + service info |
-
 ### Speech-to-Text (STT)
 
-#### HTTP (OpenAI-compatible)
+#### HTTP — `POST /v1/stt/http`
 
-| Method | Endpoint | Description | OpenAI Compatible |
-|--------|----------|-------------|:-:|
-| `POST` | `/v1/audio/transcriptions` | Transcribe audio file | Yes |
-| `POST` | `/v1/audio/translations` | Translate audio to English | Yes |
+Send an audio file, receive the full transcription.
 
 **Request**: `multipart/form-data`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `file` | binary | required | Audio file (WAV, MP3, FLAC, etc.) |
-| `model` | string | `faster-whisper-large-v3-turbo` | Whisper model ID |
-| `language` | string | auto-detect | ISO 639-1 language code |
-| `prompt` | string | — | Context hint for transcription |
+| `model` | string | config default | Whisper model ID |
+| `language` | string | auto-detect | ISO 639-1 code |
+| `prompt` | string | — | Context hint |
 | `response_format` | string | `json` | `json`, `text`, `verbose_json`, `srt`, `vtt` |
 | `temperature` | float | `0.0` | Sampling temperature (0.0–1.0) |
-| `stream` | bool | `false` | Enable SSE streaming |
 | `vad_filter` | bool | `false` | Voice Activity Detection |
-| `hotwords` | string | — | Bias transcription toward specific words |
+| `hotwords` | string | — | Bias toward specific words |
 | `timestamp_granularities[]` | string | `segment` | `segment` or `word` |
 
 **Response formats**:
@@ -104,29 +103,30 @@ WEBVTT
 Hello world.
 ```
 
-#### SSE Streaming
+Translation: `POST /v1/stt/translate` (same fields, outputs English).
 
-Same endpoint with `stream=true`. Returns `text/event-stream`:
+#### SSE — `POST /v1/stt/sse`
+
+Same request with `stream=true`. Returns `text/event-stream`:
 
 ```
-data: {"text": "Hello"}
-data: {"text": " world."}
+data: Hello
+data:  world.
+data: [DONE]
 ```
 
-#### WebSocket (Real-time Streaming)
+#### WebSocket — `WS /v1/stt/ws`
 
-| Endpoint | Description |
-|----------|-------------|
-| `WS /v1/audio/transcriptions` | Real-time streaming STT with LocalAgreement |
+Real-time streaming STT with LocalAgreement.
 
-**Query parameters**: `?language=es&response_format=text&model=...`
+**Query parameters**: `?language=es&response_format=json&model=...`
 
 **Protocol**:
 1. Connect with optional query params
-2. Send base64-encoded PCM16 audio (16kHz mono) as text frames
+2. Send base64-encoded PCM16 audio chunks (16kHz mono) as text frames
 3. Receive streaming transcription events
 
-**Response** (when `response_format=json`):
+**Response** (`response_format=json`):
 
 ```json
 {"type": "transcript_update", "text": "Hola mundo", "partial": "qué tal", "is_final": false}
@@ -137,19 +137,16 @@ data: {"text": " world."}
 When `response_format=text`: returns confirmed text as plain string.
 
 **Features**:
-- LocalAgreement algorithm — words are never retracted once confirmed
+- LocalAgreement — words are never retracted once confirmed
 - Sentence-boundary finalization + same-output detection
 - Bounded audio buffer (45s max) with context re-transcription
-- Per-connection state with automatic cleanup on disconnect
+- Per-connection state with automatic cleanup
 
 ### Text-to-Speech (TTS)
 
-#### HTTP (OpenAI-compatible)
+#### HTTP — `POST /v1/tts/http`
 
-| Method | Endpoint | Description | OpenAI Compatible |
-|--------|----------|-------------|:-:|
-| `POST` | `/v1/audio/speech` | Synthesize speech from text | Yes |
-| `GET` | `/v1/audio/voices` | List available voices | — |
+Send text, receive complete audio file.
 
 **Request**: `application/json`
 
@@ -158,7 +155,7 @@ When `response_format=text`: returns confirmed text as plain string.
   "input": "Hello world.",
   "model": "kokoro",
   "voice": "af_heart",
-  "response_format": "mp3",
+  "response_format": "wav",
   "speed": 1.0,
   "stream": false
 }
@@ -170,56 +167,54 @@ When `response_format=text`: returns confirmed text as plain string.
 | `model` | string | `kokoro` | TTS model |
 | `voice` | string | `af_heart` | Voice ID (prefix = language) |
 | `response_format` | string | `mp3` | `pcm`, `mp3`, `wav`, `flac`, `opus`, `aac` |
-| `speed` | float | `1.0` | Speaking speed multiplier |
-| `stream` | bool | `false` | Enable streaming response |
+| `speed` | float | `1.0` | Speed multiplier (0.25–4.0) |
+| `stream` | bool | `true` | Enable streaming |
 
-#### SSE Streaming
+Voices: `GET /v1/audio/voices`
 
-Same endpoint with `stream=true` + `stream_format=sse`.
+#### SSE — `POST /v1/tts/sse`
 
-#### Audio Streaming
+Request with `stream=true` + `stream_format=sse`. Returns `text/event-stream`:
 
-Same endpoint with `stream=true` + `stream_format=audio`. Returns chunked binary audio.
+```json
+{"type": "speech.audio.delta", "audio": "<base64_pcm16_24khz>"}
+{"type": "speech.audio.delta", "audio": "<base64_pcm16_24khz>"}
+{"type": "speech.audio.done"}
+```
 
-#### WebSocket (Real-time Streaming)
+#### Streaming — `POST /v1/tts/stream`
 
-| Endpoint | Description |
-|----------|-------------|
-| `WS /v1/audio/speech` | Real-time streaming TTS |
+Request with `stream=true` + `stream_format=audio`. Returns chunked binary audio with `Content-Type: audio/*`.
+
+#### WebSocket — `WS /v1/tts/ws`
+
+Real-time streaming TTS.
 
 **Protocol**:
 1. Connect
-2. Send JSON: `{"input": "Hello", "voice": "af_heart", "speed": 1.0, "lang": "en-us"}`
-3. Receive streaming audio chunks:
+2. Send JSON: `{"input": "Hello", "voice": "af_heart", "speed": 1.0}`
+3. Receive audio chunks:
 
 ```json
 {"type": "speech.audio.delta", "audio": "<base64_pcm16_24khz>"}
 {"type": "speech.audio.done"}
 ```
 
-### Model Management
+### Health & Models
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `GET` | `/health` | Health check + service info |
 | `GET` | `/v1/models` | List loaded models |
 | `GET` | `/v1/models/:model_id` | Get model info |
-| `POST` | `/v1/api/ps/:model_id` | Load model into memory |
-| `DELETE` | `/v1/api/ps/:model_id` | Unload model |
-| `GET` | `/v1/api/ps` | List loaded models (internal) |
-| `POST` | `/v1/api/pull/:model_id` | Download model from HuggingFace |
+| `GET` | `/v1/models/list` | List downloaded models on disk |
+| `POST` | `/v1/models/download` | Download model from HuggingFace |
 
-## Transport Summary
-
-| Transport | STT | TTS |
-|-----------|:---:|:---:|
-| HTTP POST (batch) | `/v1/audio/transcriptions` | `/v1/audio/speech` |
-| SSE (streaming) | `stream=true` | `stream=true` + `stream_format=sse` |
-| Audio stream | — | `stream=true` + `stream_format=audio` |
-| WebSocket | `WS /v1/audio/transcriptions` | `WS /v1/audio/speech` |
+---
 
 ## OpenAI Compatibility
 
-e-voice implements the [OpenAI Audio API](https://platform.openai.com/docs/api-reference/audio) specification:
+e-voice is a drop-in replacement for the [OpenAI Audio API](https://platform.openai.com/docs/api-reference/audio):
 
 | OpenAI Endpoint | e-voice | Status |
 |-----------------|---------|--------|
@@ -227,27 +222,24 @@ e-voice implements the [OpenAI Audio API](https://platform.openai.com/docs/api-r
 | `POST /v1/audio/translations` | Same | Full |
 | `POST /v1/audio/speech` | Same | Full |
 | `GET /v1/models` | Same | Full |
-| `GET /v1/audio/voices` | Extension | Extension |
-| `WS /v1/audio/transcriptions` | Extension | Extension |
-| `WS /v1/audio/speech` | Extension | Extension |
-
-Drop-in replacement for any OpenAI-compatible client:
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(base_url="http://localhost:5500/v1", api_key="unused")
 
-# Transcribe
 result = client.audio.transcriptions.create(
     model="whisper-1", file=open("audio.wav", "rb")
 )
 
-# Synthesize
 response = client.audio.speech.create(
     model="kokoro", voice="af_heart", input="Hello world."
 )
 ```
+
+Extensions beyond OpenAI: SSE streaming, WebSocket transports, voice listing, model management.
+
+---
 
 ## Development
 
@@ -257,21 +249,22 @@ make type          # ty type check
 make test          # unit tests (parallel, coverage >90%)
 make check         # lint + type + test
 make stt           # mic -> WebSocket STT (ffmpeg + websocat)
-make tts           # text -> WebSocket TTS (websocat)
+make tts           # text -> TTS with playback (curl + aplay)
 ```
 
 ## Web UI (Gradio)
 
-A Gradio playground launches automatically alongside the API:
+Launches automatically alongside the API:
 
-- **Speech-to-Text** — upload audio, select model/language, transcribe or translate (with SSE streaming)
+- **Live Mic** — real-time WebSocket STT from browser microphone
+- **Speech-to-Text** — upload audio, select model/language, transcribe (with SSE streaming)
 - **Text-to-Speech** — enter text, pick voice/speed, synthesize audio
-- **Models** — view downloaded models, download new STT/TTS models
+- **Models** — view and download STT/TTS models
 
 | Environment | URL |
 |-------------|-----|
 | Local | `http://localhost:5600` |
-| Docker | `http://localhost:5500` (nginx proxies root → Gradio) |
+| Docker | `http://localhost:5500` |
 
 Disable via `front.enabled: false` in `data/config/config.yaml`.
 
@@ -294,7 +287,7 @@ tts:
 
 front:
   enabled: true
-  port: 7860
+  port: 5600
 ```
 
 ## Data Layout
@@ -302,8 +295,8 @@ front:
 ```
 data/
 ├── config/
-│   └── config.yaml   # Tracked in git — all app configuration
+│   └── config.yaml   # All app configuration
 └── models/
-    ├── stt/           # Gitignored — downloaded Whisper models
-    └── tts/           # Gitignored — downloaded Kokoro models
+    ├── stt/           # Downloaded Whisper models (gitignored)
+    └── tts/           # Downloaded Kokoro models (gitignored)
 ```

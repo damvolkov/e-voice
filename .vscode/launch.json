@@ -2,7 +2,36 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "e-voice",
+            "name": "e-voice (dev)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robyn",
+            "args": ["src/e_voice/main.py", "--dev"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "LD_LIBRARY_PATH": "${workspaceFolder}/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:${workspaceFolder}/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib"
+            },
+            "justMyCode": false,
+            "subProcess": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "e-voice (dev CPU)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robyn",
+            "args": ["src/e_voice/main.py", "--dev"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "justMyCode": false,
+            "subProcess": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "e-voice (no reload)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/e_voice/main.py",
@@ -15,7 +44,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "e-voice (CPU)",
+            "name": "e-voice (no reload CPU)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/e_voice/main.py",

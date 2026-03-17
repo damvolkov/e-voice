@@ -113,8 +113,8 @@ check: lint type test
 # Development — API on :5500, Gradio on :5600
 
 dev:
-	@echo "$(CYAN)=== API: http://localhost:$(SERVICE_PORT) | Gradio: http://localhost:$(GRADIO_PORT) ===$(RESET)"
-	@LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
+	@echo "$(CYAN)=== API: http://localhost:$(SERVICE_PORT) | Gradio: http://localhost:$(GRADIO_PORT) [reload] ===$(RESET)"
+	@LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -m robyn src/e_voice/main.py --dev
 
 
 # Live test (requires running server — works with both local and docker)
@@ -133,11 +133,21 @@ stt:
 		| uv run python -uc "import sys,base64;[print(base64.b64encode(c).decode(),flush=True)for c in iter(lambda:sys.stdin.buffer.read(32000),b'')]" \
 		| websocat "ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions?language=$(STT_LANG)&response_format=$(STT_FMT)"
 
+TTS_VOICE ?= af_heart
+TTS_FMT ?= pcm
+
 tts:
-	@command -v websocat >/dev/null 2>&1 || { echo "$(RED)websocat not found. Run: make install$(RESET)"; exit 1; }
-	@echo "$(CYAN)=== TTS: ws://localhost:$(SERVICE_PORT)/v1/audio/speech ===$(RESET)"
-	@echo "$(YELLOW)Type JSON + Enter. Example: {\"input\":\"Hello world\",\"voice\":\"af_heart\"}$(RESET)"
-	@websocat "ws://localhost:$(SERVICE_PORT)/v1/audio/speech"
+	@command -v aplay >/dev/null 2>&1 || { echo "$(RED)aplay not found. Install: sudo apt-get install alsa-utils$(RESET)"; exit 1; }
+	@echo "$(CYAN)=== TTS: http://localhost:$(SERVICE_PORT)/v1/audio/speech voice=$(TTS_VOICE) ===$(RESET)"
+	@echo "$(YELLOW)Type text + Enter to speak. Ctrl+C to stop.$(RESET)"
+	@while IFS= read -r line; do \
+		[ -z "$$line" ] && continue; \
+		curl -sN http://localhost:$(SERVICE_PORT)/v1/audio/speech \
+			-H 'Content-Type: application/json' \
+			-d "{\"input\":\"$$line\",\"voice\":\"$(TTS_VOICE)\",\"response_format\":\"$(TTS_FMT)\",\"stream\":true}" \
+			| aplay -f S16_LE -r 24000 -c 1 -t raw -q 2>/dev/null; \
+	done
+
 
 
 # Docker — self-contained image (API + Gradio + nginx on :80)

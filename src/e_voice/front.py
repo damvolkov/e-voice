@@ -1,137 +1,155 @@
 """Gradio UI for e-voice — STT/TTS playground + model management."""
 
 import threading
-from collections.abc import Generator
 from pathlib import Path
 
 import gradio as gr
-import httpx
-from httpx_sse import connect_sse
 
+from e_voice.adapters.api_client import APIClient, create_stream, remove_stream, send_stream_chunk
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
 
-_TIMEOUT = httpx.Timeout(timeout=180.0)
-
 ##### THEME #####
 
+_THEME = gr.themes.Base(
+    primary_hue=gr.themes.colors.cyan,
+    secondary_hue=gr.themes.colors.cyan,
+    neutral_hue=gr.themes.colors.gray,
+    font=gr.themes.GoogleFont("JetBrains Mono"),
+    font_mono=gr.themes.GoogleFont("JetBrains Mono"),
+).set(
+    body_background_fill="#050508",
+    body_background_fill_dark="#050508",
+    block_background_fill="#0d1117",
+    block_background_fill_dark="#0d1117",
+    block_border_color="#1e3a4f",
+    block_border_color_dark="#1e3a4f",
+    block_label_text_color="#7dd3d8",
+    block_label_text_color_dark="#7dd3d8",
+    block_title_text_color="#7dd3d8",
+    block_title_text_color_dark="#7dd3d8",
+    body_text_color="#c8d6d8",
+    body_text_color_dark="#c8d6d8",
+    body_text_color_subdued="#5a7a7e",
+    body_text_color_subdued_dark="#5a7a7e",
+    button_primary_background_fill="#0891b2",
+    button_primary_background_fill_dark="#0891b2",
+    button_primary_background_fill_hover="#06b6d4",
+    button_primary_text_color="#000",
+    button_primary_text_color_dark="#000",
+    button_secondary_background_fill="#0d1117",
+    button_secondary_background_fill_dark="#0d1117",
+    button_secondary_border_color="#1e3a4f",
+    button_secondary_border_color_dark="#1e3a4f",
+    button_secondary_text_color="#7dd3d8",
+    button_secondary_text_color_dark="#7dd3d8",
+    input_background_fill="#0a0f14",
+    input_background_fill_dark="#0a0f14",
+    input_border_color="#1e3a4f",
+    input_border_color_dark="#1e3a4f",
+    input_placeholder_color="#3a5a5e",
+    input_placeholder_color_dark="#3a5a5e",
+    border_color_accent="#0891b2",
+    border_color_accent_dark="#0891b2",
+    color_accent_soft="#0891b220",
+    color_accent_soft_dark="#0891b220",
+    slider_color="#0891b2",
+    slider_color_dark="#0891b2",
+)
+
 _CSS = """
-.gradio-container { background-color: #1a1a2e !important; }
-.gr-button-primary { background-color: #1e6091 !important; border-color: #1e6091 !important; }
-.gr-button-primary:hover { background-color: #2980b9 !important; }
-.gr-panel { border-color: #2c3e6b !important; }
 footer { display: none !important; }
+.tab-nav button { color: #5a7a7e !important; border-color: transparent !important; }
+.tab-nav button.selected { color: #06b6d4 !important; border-color: #0891b2 !important; }
+.hide-device-select .audio-input-select { display: none !important; }
+.hide-device-select select { display: none !important; }
 """
 
 
-##### HTTP CLIENT HELPERS #####
+##### HELPERS #####
 
 
 def _base_url() -> str:
     return f"http://127.0.0.1:{st.system.port}"
 
 
-def _client() -> httpx.Client:
-    return httpx.Client(base_url=_base_url(), timeout=_TIMEOUT)
+def _api() -> APIClient:
+    return APIClient(_base_url())
 
 
-def _fetch_stt_models() -> list[str]:
-    """Fetch loaded STT model IDs from API."""
+##### LIVE MIC WRAPPERS #####
+
+
+def _on_start(language: str) -> dict | None:
+    return create_stream(_base_url(), language)
+
+
+def _on_chunk(state: dict | None, audio_chunk) -> tuple[dict | None, str]:
+    return send_stream_chunk(state, audio_chunk)
+
+
+def _on_stop(state: dict | None) -> tuple[None, str]:
+    return remove_stream(state)
+
+
+##### STT WRAPPER #####
+
+
+def _transcribe(audio_path: str, model: str, task: str, language: str, temperature: float, fmt: str, stream: bool):
+    """Transcribe audio file. Generator for Gradio — yields text progressively or once."""
+    if not audio_path:
+        yield "Error: No audio file provided"
+        return
+
+    api = _api()
     try:
-        with _client() as c:
-            resp = c.get("/v1/models")
-            resp.raise_for_status()
-            return [m["id"] for m in resp.json().get("data", [])]
-    except Exception:
-        return [st.stt.model]
-
-
-def _fetch_downloaded_models() -> dict:
-    """Fetch all downloaded models from disk via API."""
-    try:
-        with _client() as c:
-            resp = c.get("/v1/models/list")
-            resp.raise_for_status()
-            return resp.json()
-    except Exception:
-        return {"stt": [], "tts": []}
-
-
-##### STT HANDLERS #####
-
-
-def _transcribe(
-    audio_path: str,
-    model: str,
-    task: str,
-    language: str,
-    temperature: float,
-    response_format: str,
-    stream: bool,
-) -> Generator[str, None, None]:
-    """Transcribe or translate audio via HTTP API."""
-    endpoint = "/v1/audio/translations" if task == "translate" else "/v1/audio/transcriptions"
-
-    with _client() as c, Path(audio_path).open("rb") as f:
-        form_data = {
-            "model": model,
-            "response_format": response_format if not stream else "text",
-            "temperature": str(temperature),
-        }
-        if language and language != "auto":
-            form_data["language"] = language
-
         if stream:
-            form_data["stream"] = "true"
-            accumulated = ""
-            with connect_sse(c, "POST", endpoint, files={"file": f}, data=form_data) as sse:
-                for event in sse.iter_sse():
-                    accumulated += event.data
-                    yield accumulated
+            gen = api.create_transcription_stream(
+                Path(audio_path),
+                model=model,
+                task=task,
+                language=language,
+                temperature=temperature,
+            )
+            try:
+                yield from gen
+            finally:
+                gen.close()
         else:
-            resp = c.post(endpoint, files={"file": f}, data=form_data)
-            resp.raise_for_status()
-            yield resp.text
+            yield api.create_transcription(
+                Path(audio_path),
+                model=model,
+                task=task,
+                language=language,
+                response_format=fmt,
+                temperature=temperature,
+            )
+    except Exception as e:
+        error_msg = f"Error: {type(e).__name__}"
+        if str(e):
+            error_msg += f" — {e}"
+        logger.error("transcription failed", error=error_msg, path=audio_path)
+        yield error_msg
 
 
-##### TTS HANDLERS #####
+##### TTS WRAPPER #####
 
 
 def _synthesize(text: str, voice: str, speed: float) -> str | None:
-    """Synthesize speech and return path to audio file."""
+    """Synthesize and return temp file path."""
     if not text.strip():
         return None
-    with _client() as c:
-        resp = c.post(
-            "/v1/audio/speech",
-            json={"input": text, "model": "kokoro", "voice": voice, "speed": speed, "response_format": "wav"},
-        )
-        resp.raise_for_status()
-        tmp = Path("/tmp/evoice_tts_output.wav")
-        tmp.write_bytes(resp.content)
-        return str(tmp)
+    audio_bytes = _api().create_synthesis(text, voice=voice, speed=speed)
+    tmp = Path("/tmp/evoice_tts_output.wav")
+    tmp.write_bytes(audio_bytes)
+    return str(tmp)
 
 
-##### MODEL MANAGEMENT HANDLERS #####
-
-
-def _download_model(model_id: str, service: str) -> str:
-    """Download a model via the system API."""
-    if not model_id.strip():
-        return "No model ID provided"
-    try:
-        with _client() as c:
-            resp = c.post("/v1/models/download", json={"model": model_id, "service": service}, timeout=600.0)
-            resp.raise_for_status()
-            data = resp.json()
-            return f"Downloaded: {data['model']} → {data['path']}"
-    except Exception as exc:
-        return f"Error: {exc}"
+##### MODEL WRAPPERS #####
 
 
 def _refresh_models() -> str:
-    """Refresh and format the downloaded models list."""
-    data = _fetch_downloaded_models()
+    data = _api().get_downloaded_models()
     lines = ["**STT Models:**"]
     for m in data.get("stt", []):
         lines.append(f"- `{m['id']}` ({m['size_mb']} MB)")
@@ -145,83 +163,85 @@ def _refresh_models() -> str:
     return "\n".join(lines)
 
 
-##### GRADIO APP FACTORY #####
+def _download_model(model_id: str, service: str) -> str:
+    return _api().download_model(model_id, service)
 
-_THEME = gr.themes.Base(
-    primary_hue=gr.themes.colors.blue,
-    secondary_hue=gr.themes.colors.cyan,
-    neutral_hue=gr.themes.colors.gray,
-).set(
-    body_background_fill="#1a1a2e",
-    body_background_fill_dark="#1a1a2e",
-    block_background_fill="#16213e",
-    block_background_fill_dark="#16213e",
-    block_border_color="#2c3e6b",
-    block_border_color_dark="#2c3e6b",
-    button_primary_background_fill="#1e6091",
-    button_primary_background_fill_dark="#1e6091",
-    button_primary_background_fill_hover="#2980b9",
-    input_background_fill="#0f3460",
-    input_background_fill_dark="#0f3460",
-    input_border_color="#2c3e6b",
-    input_border_color_dark="#2c3e6b",
-)
+
+##### APP FACTORY #####
+
+
+def _load_logo_html() -> str:
+    logo_path = st.BASE_DIR / "assets" / "e-voice-landscape.svg"
+    if not logo_path.exists():
+        return ""
+    svg = logo_path.read_text().replace("#2D2D2A", "#06b6d4")
+    return f'<div style="display:flex;justify-content:center;padding:20px 0 8px">{svg}</div>'
 
 
 def create_app() -> gr.Blocks:
     """Build the Gradio Blocks UI."""
-    logo_path = st.BASE_DIR / "assets" / "e-voice-landscape.svg"
-    logo_html = ""
-    if logo_path.exists():
-        logo_html = f'<div style="text-align:center;padding:10px"><img src="/file={logo_path}" width="300"></div>'
+    api = _api()
 
     with gr.Blocks(title="e-voice") as app:
-        if logo_html:
-            gr.HTML(logo_html)
-        gr.Markdown(f"<center><small>v{st.API_VERSION} · API at <code>{_base_url()}</code></small></center>")
+        gr.HTML(_load_logo_html())
 
         with gr.Tabs():
+            ##### LIVE MIC TAB #####
+            with gr.Tab("Live Mic"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        mic_lang = gr.Dropdown(
+                            choices=["auto", "en", "es", "fr", "de", "it", "pt", "ja", "zh"],
+                            value=st.stt.default_language or "auto",
+                            label="Language",
+                        )
+                        mic_audio = gr.Audio(
+                            sources=["microphone"],
+                            streaming=True,
+                            type="numpy",
+                            elem_classes=["hide-device-select"],
+                        )
+                    with gr.Column(scale=1):
+                        mic_output = gr.Textbox(label="Transcription", lines=12, interactive=False)
+
+                mic_state = gr.State(value=None)
+                mic_audio.start_recording(fn=_on_start, inputs=[mic_lang], outputs=[mic_state])
+                mic_audio.stream(
+                    fn=_on_chunk, inputs=[mic_state, mic_audio], outputs=[mic_state, mic_output], stream_every=0.5
+                )
+                mic_audio.stop_recording(fn=_on_stop, inputs=[mic_state], outputs=[mic_state, mic_output])
+
             ##### STT TAB #####
             with gr.Tab("Speech-to-Text"):
                 with gr.Row():
                     with gr.Column(scale=1):
                         stt_audio = gr.Audio(type="filepath", label="Audio input")
                         stt_model = gr.Dropdown(
-                            choices=_fetch_stt_models(),
-                            value=st.stt.model,
-                            label="Model",
+                            choices=api.get_models() or [st.stt.model], value=st.stt.model, label="Model"
                         )
-                        stt_task = gr.Dropdown(
-                            choices=["transcribe", "translate"],
-                            value="transcribe",
-                            label="Task",
-                        )
-                        stt_language = gr.Textbox(
-                            value=st.stt.default_language or "auto",
-                            label="Language (ISO 639-1 or 'auto')",
-                        )
+                        stt_task = gr.Dropdown(choices=["transcribe", "translate"], value="transcribe", label="Task")
+                        stt_language = gr.Textbox(value=st.stt.default_language or "auto", label="Language")
                         stt_format = gr.Dropdown(
-                            choices=["text", "json", "verbose_json", "srt", "vtt"],
-                            value="text",
-                            label="Response format",
+                            choices=["text", "json", "verbose_json", "srt", "vtt"], value="text", label="Format"
                         )
                         stt_temp = gr.Slider(0.0, 1.0, value=0.0, step=0.1, label="Temperature")
                         stt_stream = gr.Checkbox(value=True, label="Stream (SSE)")
                         stt_btn = gr.Button("Transcribe", variant="primary")
                     with gr.Column(scale=1):
-                        stt_output = gr.Textbox(label="Output", lines=12, interactive=False)
+                        stt_output = gr.Textbox(label="Output", lines=14, interactive=False)
 
                 stt_btn.click(
                     fn=_transcribe,
                     inputs=[stt_audio, stt_model, stt_task, stt_language, stt_temp, stt_format, stt_stream],
                     outputs=stt_output,
+                    show_progress="full",
                 )
 
             ##### TTS TAB #####
             with gr.Tab("Text-to-Speech"):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        tts_text = gr.Textbox(label="Text input", lines=4, placeholder="Enter text to synthesize...")
+                        tts_text = gr.Textbox(label="Text", lines=4, placeholder="Enter text to synthesize...")
                         tts_voice = gr.Dropdown(
                             choices=[
                                 "af_heart",
@@ -244,11 +264,7 @@ def create_app() -> gr.Blocks:
                     with gr.Column(scale=1):
                         tts_output = gr.Audio(label="Output", type="filepath")
 
-                tts_btn.click(
-                    fn=_synthesize,
-                    inputs=[tts_text, tts_voice, tts_speed],
-                    outputs=tts_output,
-                )
+                tts_btn.click(fn=_synthesize, inputs=[tts_text, tts_voice, tts_speed], outputs=tts_output)
 
             ##### MODELS TAB #####
             with gr.Tab("Models"):
@@ -265,11 +281,9 @@ def create_app() -> gr.Blocks:
                 dl_btn = gr.Button("Download", variant="primary")
                 dl_result = gr.Textbox(label="Result", interactive=False)
 
-                dl_btn.click(
-                    fn=_download_model,
-                    inputs=[dl_model_id, dl_service],
-                    outputs=dl_result,
-                ).then(fn=_refresh_models, outputs=models_display)
+                dl_btn.click(fn=_download_model, inputs=[dl_model_id, dl_service], outputs=dl_result).then(
+                    fn=_refresh_models, outputs=models_display
+                )
 
     return app
 
@@ -286,6 +300,8 @@ def launch_background() -> None:
     def _run() -> None:
         app = create_app()
         app.launch(
+            theme=_THEME,
+            css=_CSS,
             server_name="0.0.0.0",
             server_port=st.front.port,
             share=st.front.share,
@@ -295,5 +311,4 @@ def launch_background() -> None:
 
     thread = threading.Thread(target=_run, daemon=True, name="gradio-ui")
     thread.start()
-    logger.info("gradio UI started", step="START", url=f"http://localhost:{st.front.port}")
     logger.info("gradio UI started", step="START", port=st.front.port)

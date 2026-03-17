@@ -17,8 +17,8 @@ from e_voice.front import launch_background as launch_gradio
 from e_voice.middlewares.base import MiddlewareHandler
 from e_voice.middlewares.files import FileUploadOpenAPIMiddleware
 from e_voice.middlewares.swagger import SwaggerBrandingMiddleware
-from e_voice.websockets.stt import ws_stt
-from e_voice.websockets.tts import ws_tts
+from e_voice.websockets.stt import ws_stt, ws_stt_alias
+from e_voice.websockets.tts import ws_tts, ws_tts_alias
 
 app = Robyn(__file__)
 
@@ -29,12 +29,15 @@ lifespan.register(KokoroModelEvent)
 
 websockets = WebSocketHandler(app)
 websockets.register(ws_stt)
+websockets.register(ws_stt_alias)
 websockets.register(ws_tts)
+websockets.register(ws_tts_alias)
 
 
 async def startup() -> None:
     """Startup: lifespan first, then inject WS dependencies, then Gradio UI."""
     await lifespan.startup()
+    assert lifespan.state is not None
     lifespan.state.stt_sessions = {}
     websockets.inject_dependencies()
     launch_gradio()

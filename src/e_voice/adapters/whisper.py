@@ -12,7 +12,7 @@ from huggingface_hub import snapshot_download
 from numpy.typing import NDArray
 
 from e_voice.adapters.base import BaseModelAdapter
-from e_voice.core.helpers import audio_duration, format_timestamp, format_timestamp_vtt
+from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.settings import STTConfig, VADConfig, resolve_compute_type
 from e_voice.core.settings import settings as st
@@ -281,7 +281,7 @@ class WhisperAdapter(BaseModelAdapter):
                 resp = TranscriptionVerboseResponse(
                     task=task,
                     language=info.language,
-                    duration=audio_duration(audio_data),
+                    duration=Audio.duration(audio_data),
                     text=text,
                     segments=seg_models,
                     words=all_words,
@@ -322,8 +322,8 @@ def _format_srt(segments: list[Segment]) -> str:
 
 
 def _format_srt_segment(segment: Segment, index: int) -> str:
-    start = format_timestamp(segment.start)
-    end = format_timestamp(segment.end)
+    start = Audio.format_timestamp(segment.start)
+    end = Audio.format_timestamp(segment.end)
     return f"{index + 1}\n{start} --> {end}\n{segment.text.strip()}\n"
 
 
@@ -333,6 +333,6 @@ def _format_vtt(segments: list[Segment]) -> str:
 
 
 def _format_vtt_segment(segment: Segment) -> str:
-    start = format_timestamp_vtt(segment.start)
-    end = format_timestamp_vtt(segment.end)
+    start = Audio.format_timestamp_vtt(segment.start)
+    end = Audio.format_timestamp_vtt(segment.end)
     return f"{start} --> {end}\n{segment.text.strip()}\n"

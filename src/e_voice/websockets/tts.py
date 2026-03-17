@@ -4,11 +4,12 @@ import orjson
 from robyn.robyn import WebSocketConnector
 
 from e_voice.adapters.kokoro import KokoroAdapter
-from e_voice.core.helpers import float32_to_base64_pcm16
+from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.websocket import BaseWebSocket
 
 ws_tts = BaseWebSocket("/v1/audio/speech")
+ws_tts_alias = BaseWebSocket("/v1/tts/ws")
 
 
 @ws_tts.on("connect")
@@ -20,16 +21,22 @@ def on_connect(ws: WebSocketConnector) -> str:
 @ws_tts.on("message")
 async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> str:
     """Receive JSON text request, stream back base64 PCM16 audio chunks."""
-    kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
+    if not msg or not msg.strip():
+        return ""
 
-    payload = orjson.loads(msg)
+    try:
+        payload = orjson.loads(msg)
+    except orjson.JSONDecodeError:
+        return orjson.dumps({"error": "Invalid JSON"}).decode()
+
     text = payload.get("input", "")
+    if not text:
+        return orjson.dumps({"error": "Empty input"}).decode()
+
+    kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
     voice = payload.get("voice", "af_heart")
     speed = float(payload.get("speed", 1.0))
     lang = payload.get("lang")
-
-    if not text:
-        return orjson.dumps({"error": "Empty input"}).decode()
 
     logger.info("speech request", step="WS", client=ws.id, voice=voice, text_len=len(text))
 
@@ -37,7 +44,7 @@ async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> s
         chunk = orjson.dumps(
             {
                 "type": "speech.audio.delta",
-                "audio": float32_to_base64_pcm16(samples),
+                "audio": Audio.float32_to_base64_pcm16(samples),
             }
         ).decode()
         await ws.async_send_to(ws.id, chunk)
@@ -52,3 +59,6 @@ async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> s
 def on_close(ws: WebSocketConnector) -> str:
     logger.info("tts disconnected", step="WS", client=ws.id)
     return ""
+
+
+ws_tts_alias._handlers = ws_tts._handlers

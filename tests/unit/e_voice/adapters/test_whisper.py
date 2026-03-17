@@ -271,9 +271,7 @@ async def test_transcribe_calls_model() -> None:
     mock_model.transcribe.return_value = (iter(mock_segments), mock_info)
     with patch.object(adapter, "_lc_create_model", return_value=mock_model):
         await adapter.load("test-model")
-    segments, info = await adapter.transcribe(
-        np.zeros(16000, dtype=np.float32), model_id="test-model"
-    )
+    segments, info = await adapter.transcribe(np.zeros(16000, dtype=np.float32), model_id="test-model")
     assert len(segments) == 1
     assert info.language == "en"
 

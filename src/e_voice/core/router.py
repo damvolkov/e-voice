@@ -7,7 +7,7 @@ from typing import Any
 
 import orjson
 from pydantic import BaseModel, ValidationError
-from robyn import Request, Response, SubRouter, status_codes
+from robyn import Request, Response, StreamingResponse, SubRouter, status_codes
 from robyn.robyn import HttpMethod
 from robyn.types import Body
 
@@ -94,9 +94,11 @@ def parse_request_files(
     return None
 
 
-def parse_response(result: Any) -> Response:
-    """Convert handler result to Response."""
+def parse_response(result: Any) -> Response | StreamingResponse:
+    """Convert handler result to Response. Passes StreamingResponse through."""
     match result:
+        case StreamingResponse():
+            return result
         case Response():
             return result
         case BaseModel():
@@ -132,7 +134,12 @@ HTTP_METHODS = (
 )
 
 
-def _create_method_wrapper(original_method: Callable, router_prefix: str = "") -> Callable:
+def _create_method_wrapper(
+    original_method: Callable,
+    router_prefix: str = "",
+    handler_registry: dict | None = None,
+    method_name: str = "",
+) -> Callable:
     @wraps(original_method)
     def method_wrapper(*args, **kwargs) -> Callable:
         endpoint = args[0] if args else kwargs.get("endpoint", "")
@@ -171,6 +178,11 @@ def _create_method_wrapper(original_method: Callable, router_prefix: str = "") -
                     new_params.append(param)
 
             wrapped_handler.__signature__ = sig.replace(parameters=new_params)  # type: ignore[attr-defined]
+
+            if handler_registry is not None:
+                full_path = f"{router_prefix}{endpoint}"
+                handler_registry[full_path] = (method_name, wrapped_handler)
+
             return decorator(wrapped_handler)
 
         return handler_decorator
@@ -179,11 +191,13 @@ def _create_method_wrapper(original_method: Callable, router_prefix: str = "") -
 
 
 class Router(SubRouter):
-    """Enhanced SubRouter with automatic body/file parsing and response handling."""
+    """Enhanced SubRouter with automatic body/file parsing, response handling, and aliases."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._prefix = kwargs.get("prefix", "")
+        self._originals: dict[str, Callable] = {}
+        self._handlers: dict[str, tuple[str, Callable]] = {}
         self._wrap_methods()
 
     def _wrap_methods(self) -> None:
@@ -192,5 +206,19 @@ class Router(SubRouter):
             method_name = str(method).split(".")[-1].lower()
             if hasattr(self, method_name):
                 original_method = getattr(self, method_name)
-                wrapped_method = _create_method_wrapper(original_method, self._prefix)
-                setattr(self, method_name, wrapped_method)
+                self._originals[method_name] = original_method
+                setattr(
+                    self,
+                    method_name,
+                    _create_method_wrapper(original_method, self._prefix, self._handlers, method_name),
+                )
+
+    def alias(self, source: str, *aliases: str) -> None:
+        """Register existing endpoint's wrapped handler on additional paths (no re-wrapping)."""
+        full_source = f"{self._prefix}{source}"
+        if full_source not in self._handlers:
+            raise ValueError(f"No handler registered for {full_source}. Call alias() after the handler is defined.")
+        method_name, wrapped_handler = self._handlers[full_source]
+        original_method = self._originals[method_name]
+        for alias_path in aliases:
+            original_method(alias_path)(wrapped_handler)

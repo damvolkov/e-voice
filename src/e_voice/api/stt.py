@@ -5,7 +5,7 @@ from robyn import Request, Response, SSEMessage, SSEResponse, status_codes
 from robyn.types import Files, FormData
 
 from e_voice.adapters.whisper import WhisperAdapter
-from e_voice.core.helpers import audio_samples_from_file
+from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.router import Router
 from e_voice.core.settings import settings as st
@@ -19,59 +19,17 @@ from e_voice.models.transcription import (
 
 router = Router(__file__, prefix="/v1")
 
-
-##### FORM PARSING #####
-
-
-def _parse_transcription_params(form_data: FormData) -> TranscriptionParams:
-    """Parse form fields into TranscriptionParams."""
-    raw: dict = {}
-
-    if (v := form_data.get("model")) is not None:
-        raw["model"] = v
-    if (v := form_data.get("language")) is not None:
-        raw["language"] = v
-    if (v := form_data.get("prompt")) is not None:
-        raw["prompt"] = v
-    if (v := form_data.get("response_format")) is not None:
-        raw["response_format"] = v
-    if (v := form_data.get("temperature")) is not None:
-        raw["temperature"] = float(v)
-    if (v := form_data.get("stream")) is not None:
-        raw["stream"] = v.lower() in ("true", "1", "yes")
-    if (v := form_data.get("hotwords")) is not None:
-        raw["hotwords"] = v
-    if (v := form_data.get("vad_filter")) is not None:
-        raw["vad_filter"] = v.lower() in ("true", "1", "yes")
-    if (v := form_data.get("timestamp_granularities[]")) is not None:
-        raw["timestamp_granularities"] = [v] if isinstance(v, str) else v
-
-    return TranscriptionParams(**raw)
-
-
-def _parse_translation_params(form_data: FormData) -> TranslationParams:
-    """Parse form fields into TranslationParams."""
-    raw: dict = {}
-
-    if (v := form_data.get("model")) is not None:
-        raw["model"] = v
-    if (v := form_data.get("prompt")) is not None:
-        raw["prompt"] = v
-    if (v := form_data.get("response_format")) is not None:
-        raw["response_format"] = v
-    if (v := form_data.get("temperature")) is not None:
-        raw["temperature"] = float(v)
-    if (v := form_data.get("stream")) is not None:
-        raw["stream"] = v.lower() in ("true", "1", "yes")
-    if (v := form_data.get("vad_filter")) is not None:
-        raw["vad_filter"] = v.lower() in ("true", "1", "yes")
-
-    return TranslationParams(**raw)
-
-
-def _require_audio(files: Files) -> bytes | None:
-    """Extract first uploaded file or None."""
-    return next(iter(files.values()), None) if files else None
+_TRANSCRIPTION_FIELDS = (
+    "model",
+    "language",
+    "prompt",
+    "response_format",
+    "temperature",
+    "stream",
+    "hotwords",
+    "vad_filter",
+)
+_TRANSLATION_FIELDS = ("model", "prompt", "response_format", "temperature", "stream", "vad_filter")
 
 
 ##### POST /v1/audio/transcriptions #####
@@ -80,7 +38,7 @@ def _require_audio(files: Files) -> bytes | None:
 @router.post("/audio/transcriptions")
 async def transcriptions(request: Request, form_data: FormData, files: Files, global_dependencies):
     """Transcribe audio to text (OpenAI-compatible). Supports SSE streaming."""
-    if not (file_bytes := _require_audio(files)):
+    if not (file_bytes := next(iter(files.values()), None) if files else None):
         return Response(
             status_code=status_codes.HTTP_422_UNPROCESSABLE_ENTITY,
             headers={"content-type": "application/json"},
@@ -88,29 +46,18 @@ async def transcriptions(request: Request, form_data: FormData, files: Files, gl
         )
 
     whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    params = _parse_transcription_params(form_data)
+
+    raw = {k: v for k in _TRANSCRIPTION_FIELDS if (v := form_data.get(k)) is not None}
+    if (tg := form_data.get("timestamp_granularities[]")) is not None:
+        raw["timestamp_granularities"] = [tg] if isinstance(tg, str) else tg
+    params = TranscriptionParams(**raw)
+
     model_id = params.model or st.stt.model
     word_timestamps = TimestampGranularity.WORD in params.timestamp_granularities
 
     logger.info("transcription request", step="STT", model=model_id, language=params.language, stream=params.stream)
 
-    audio_data = audio_samples_from_file(file_bytes)
-
-    if params.stream:
-
-        async def sse_generator():
-            async for segment in whisper.transcribe_stream(
-                audio_data,
-                model_id=model_id,
-                language=params.language,
-                prompt=params.prompt,
-                temperature=params.temperature,
-                vad_filter=params.vad_filter,
-                hotwords=params.hotwords,
-            ):
-                yield SSEMessage(data=WhisperAdapter.format_segment_for_streaming(segment, params.response_format))
-
-        return SSEResponse(sse_generator())
+    audio_data = Audio.samples_from_file(file_bytes)
 
     segments, info = await whisper.transcribe(
         audio_data,
@@ -122,6 +69,15 @@ async def transcriptions(request: Request, form_data: FormData, files: Files, gl
         vad_filter=params.vad_filter,
         hotwords=params.hotwords,
     )
+
+    if params.stream:
+
+        def sse_generator():
+            for seg in segments:
+                yield SSEMessage(data=WhisperAdapter.format_segment_for_streaming(seg, params.response_format))
+            yield SSEMessage(data="[DONE]")
+
+        return SSEResponse(sse_generator())
 
     body, content_type = WhisperAdapter.build_response(
         segments, info, audio_data, params.response_format, word_timestamps
@@ -136,7 +92,7 @@ async def transcriptions(request: Request, form_data: FormData, files: Files, gl
 @router.post("/audio/translations")
 async def translations(request: Request, form_data: FormData, files: Files, global_dependencies):
     """Translate audio to English text (OpenAI-compatible). Supports SSE streaming."""
-    if not (file_bytes := _require_audio(files)):
+    if not (file_bytes := next(iter(files.values()), None) if files else None):
         return Response(
             status_code=status_codes.HTTP_422_UNPROCESSABLE_ENTITY,
             headers={"content-type": "application/json"},
@@ -144,12 +100,15 @@ async def translations(request: Request, form_data: FormData, files: Files, glob
         )
 
     whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    params = _parse_translation_params(form_data)
+
+    raw = {k: v for k in _TRANSLATION_FIELDS if (v := form_data.get(k)) is not None}
+    params = TranslationParams(**raw)
+
     model_id = params.model or st.stt.model
 
     logger.info("translation request", step="STT", model=model_id, stream=params.stream)
 
-    audio_data = audio_samples_from_file(file_bytes)
+    audio_data = Audio.samples_from_file(file_bytes)
 
     segments, info = await whisper.translate(
         audio_data,
@@ -161,9 +120,10 @@ async def translations(request: Request, form_data: FormData, files: Files, glob
 
     if params.stream:
 
-        async def sse_generator():
+        def sse_generator():
             for seg in segments:
                 yield SSEMessage(data=WhisperAdapter.format_segment_for_streaming(seg, params.response_format))
+            yield SSEMessage(data="[DONE]")
 
         return SSEResponse(sse_generator())
 
@@ -199,3 +159,9 @@ async def get_model(model_id: str, global_dependencies) -> Response:
         headers={"content-type": "application/json"},
         description=ModelObject(id=model_id, owned_by="whisper").model_dump_json(),
     )
+
+
+##### TAXONOMICAL ALIASES #####
+
+router.alias("/audio/transcriptions", "/stt/http", "/stt/sse")
+router.alias("/audio/translations", "/stt/translate")

@@ -1,13 +1,11 @@
 """WebSocket /v1/audio/transcriptions — streaming STT with LocalAgreement."""
 
 import base64
-from io import BytesIO
 
-import numpy as np
 import orjson
-import soundfile as sf
 from robyn.robyn import WebSocketConnector
 
+from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
 from e_voice.core.websocket import BaseWebSocket
@@ -18,26 +16,11 @@ from e_voice.streaming.transcriber import (
     process_audio_chunk,
 )
 
-SAMPLES_PER_SECOND = 16_000
-
 ws_stt = BaseWebSocket("/v1/audio/transcriptions")
+ws_stt_alias = BaseWebSocket("/v1/stt/ws")
 
 
-def _pcm16_to_float32(raw: bytes) -> np.ndarray:
-    """Decode raw PCM16-LE bytes to float32 samples at 16kHz."""
-    audio, _ = sf.read(
-        BytesIO(raw),
-        format="RAW",
-        channels=1,
-        samplerate=SAMPLES_PER_SECOND,
-        subtype="PCM_16",
-        dtype="float32",
-        endian="LITTLE",
-    )
-    return audio
-
-
-def _format_event(event: StreamingEvent, response_format: str) -> str:
+def format_event(event: StreamingEvent, response_format: str) -> str:
     """Format streaming event based on response_format."""
     match response_format:
         case "text":
@@ -81,7 +64,7 @@ async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> s
         whisper = state.whisper
 
         raw_bytes = base64.b64decode(msg)
-        audio_samples = _pcm16_to_float32(raw_bytes)
+        audio_samples = Audio.pcm16_to_float32(raw_bytes)
 
         if (event := await process_audio_chunk(session, whisper, audio_samples)) is None:
             return ""
@@ -89,7 +72,7 @@ async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> s
         if event.new_confirmed:
             logger.info(event.new_confirmed, step="STT", lang=session.language or "auto")
 
-        return _format_event(event, session.response_format)
+        return format_event(event, session.response_format)
 
     except Exception as exc:
         logger.error("streaming transcription failed", step="WS", error=str(exc))
@@ -105,3 +88,6 @@ def on_close(ws: WebSocketConnector, global_dependencies) -> str:
             logger.info(event.new_confirmed, step="STT", final=True)
     logger.info("stt stream ended", step="WS", client=ws.id)
     return ""
+
+
+ws_stt_alias._handlers = ws_stt._handlers

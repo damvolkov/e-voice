@@ -142,3 +142,63 @@ async def test_download_creates_files(tmp_path) -> None:
         path = await adapter.download()
     dl.assert_called_once()
     assert path == tmp_path
+
+
+##### SYNTHESIZE STREAM #####
+
+
+async def test_synthesize_stream_yields_chunks(tmp_path) -> None:
+    model_path = tmp_path / "kokoro-v1.0.onnx"
+    voices_path = tmp_path / "voices-v1.0.bin"
+    model_path.write_bytes(b"fake")
+    voices_path.write_bytes(b"fake")
+
+    chunks = [
+        (np.zeros(4800, dtype=np.float32), 24000),
+        (np.zeros(4800, dtype=np.float32), 24000),
+    ]
+
+    mock_kokoro = MagicMock()
+
+    async def fake_stream(*args, **kwargs):
+        for c in chunks:
+            yield c
+
+    mock_kokoro.create_stream = fake_stream
+
+    adapter = KokoroAdapter(model_dir=tmp_path)
+    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro):
+        await adapter.load()
+
+    collected = []
+    async for samples, sr in adapter.synthesize_stream("hello", voice="af_heart"):
+        collected.append((samples, sr))
+
+    assert len(collected) == 2
+    assert collected[0][1] == 24000
+
+
+##### GET VOICES #####
+
+
+async def test_get_voices(tmp_path) -> None:
+    model_path = tmp_path / "kokoro-v1.0.onnx"
+    voices_path = tmp_path / "voices-v1.0.bin"
+    model_path.write_bytes(b"fake")
+    voices_path.write_bytes(b"fake")
+
+    mock_kokoro = MagicMock()
+    mock_kokoro.get_voices.return_value = ["af_heart", "bf_emma", "jf_alpha"]
+
+    adapter = KokoroAdapter(model_dir=tmp_path)
+    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro):
+        await adapter.load()
+
+    voices = adapter.get_voices()
+    assert voices == ["af_heart", "bf_emma", "jf_alpha"]
+
+
+async def test_get_voices_not_loaded() -> None:
+    adapter = KokoroAdapter()
+    with pytest.raises(RuntimeError, match="not loaded"):
+        adapter.get_voices()

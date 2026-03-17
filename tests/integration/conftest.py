@@ -1,21 +1,32 @@
 import multiprocessing
 import os
+import socket
 import time
 
 import httpx
 import pytest
 from pytest_audioeval.client import AudioEval
 
-_TEST_PORT = 5599
-_TEST_HOST = "127.0.0.1"
+_HOST = "127.0.0.1"
 _STARTUP_TIMEOUT = 120
 
 
-def _run_server() -> None:
-    os.environ["API_HOST"] = _TEST_HOST
-    os.environ["API_PORT"] = str(_TEST_PORT)
-    os.environ["DEBUG"] = "True"
-    os.environ["ENVIRONMENT"] = "DEV"
+def _find_free_port() -> int:
+    """Bind to port 0, let the OS assign a free port, return it."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+def _run_server(port: int) -> None:
+    """Start e-voice on the given port. Runs in a subprocess."""
+    os.environ["GRADIO_ENABLED"] = "false"
+    from e_voice.core.settings import settings as st
+
+    st.system.port = port
+    st.system.host = _HOST
+    st.front.enabled = False
+
     from e_voice.main import main
 
     main()
@@ -31,24 +42,25 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture(scope="session")
-def e_voice_server() -> str:
-    process = multiprocessing.Process(target=_run_server, daemon=True)
+def e_voice_server():
+    port = _find_free_port()
+    process = multiprocessing.Process(target=_run_server, args=(port,), daemon=True)
     process.start()
 
-    base_url = f"http://{_TEST_HOST}:{_TEST_PORT}"
+    base_url = f"http://{_HOST}:{port}"
 
     for _ in range(_STARTUP_TIMEOUT):
         try:
-            response = httpx.get(f"{base_url}/health", timeout=1.0)
-            if response.status_code == 200:
+            resp = httpx.get(f"{base_url}/health", timeout=1.0)
+            if resp.status_code == 200:
                 break
         except httpx.ConnectError:
             time.sleep(1)
     else:
         process.terminate()
-        raise RuntimeError(f"e-voice server failed to start within {_STARTUP_TIMEOUT}s")
+        raise RuntimeError(f"e-voice failed to start on :{port} within {_STARTUP_TIMEOUT}s")
 
-    yield base_url
+    yield {"base_url": base_url, "host": _HOST, "port": port}
 
     process.terminate()
     process.join(timeout=5)
@@ -60,20 +72,23 @@ def e_voice_server() -> str:
 
 
 @pytest.fixture(scope="session")
-def base_url(e_voice_server: str) -> str:
-    return e_voice_server
+def base_url(e_voice_server: dict) -> str:
+    return e_voice_server["base_url"]
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def http_client(base_url: str) -> httpx.AsyncClient:
     async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
         yield client
 
 
 @pytest.fixture(scope="session")
-async def audioeval(e_voice_server: str) -> AudioEval:
-    ws_url = f"ws://{_TEST_HOST}:{_TEST_PORT}/v1/audio/transcriptions"
-    tts_url = f"http://{_TEST_HOST}:{_TEST_PORT}/v1/audio/speech"
-    client = AudioEval(stt_url=ws_url, tts_url=tts_url)
+async def audioeval(e_voice_server: dict) -> AudioEval:
+    host = e_voice_server["host"]
+    port = e_voice_server["port"]
+    client = AudioEval(
+        stt_url=f"ws://{host}:{port}/v1/audio/transcriptions",
+        tts_url=f"http://{host}:{port}/v1/audio/speech",
+    )
     yield client
     await client.aclose()
