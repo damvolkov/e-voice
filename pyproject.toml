@@ -44,6 +44,7 @@ dependencies = [
     "httpx-sse>=0.4.0",
     "httpx-ws>=0.7.0",
     "gradio>=6.9.0",
+    "websockets>=16.0",
 ]
 
 [project.scripts]
