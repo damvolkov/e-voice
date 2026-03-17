@@ -39,3 +39,8 @@ streaming:
   same_output_threshold: 7
   no_speech_threshold: 0.45
   inactivity_flush_seconds: 3.0
+
+front:
+  enabled: true
+  port: 7860
+  share: false

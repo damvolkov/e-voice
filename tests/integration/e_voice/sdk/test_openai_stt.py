@@ -4,7 +4,6 @@ Validates that e-voice is a drop-in replacement for OpenAI's Audio API
 using the official openai Python SDK.
 """
 
-
 from openai import AsyncOpenAI
 from pytest_audioeval.metrics.text import TextMetrics
 

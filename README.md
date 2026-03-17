@@ -1,8 +1,17 @@
-# e-voice
+<p align="center">
+  <img src="assets/e-voice-landscape.svg" alt="e-voice" width="420">
+</p>
 
-Production-grade Speech API — STT (faster-whisper) + TTS (Kokoro-ONNX) with streaming, WebSocket, and OpenAI-compatible endpoints.
+<p align="center">
+  <strong>Production-grade Speech API</strong> — STT (faster-whisper) + TTS (Kokoro-ONNX)<br>
+  Streaming, WebSocket, and OpenAI-compatible endpoints
+</p>
 
-Powered by [Robyn](https://github.com/sparckles/Robyn) (Rust-backed async Python).
+<p align="center">
+  Powered by <a href="https://github.com/sparckles/Robyn">Robyn</a> (Rust-backed async Python)
+</p>
+
+---
 
 ## Quick Start
 
@@ -233,14 +242,45 @@ make stt           # mic -> WebSocket STT (ffmpeg + websocat)
 make tts           # text -> WebSocket TTS (websocat)
 ```
 
+## Web UI (Gradio)
+
+A Gradio playground launches automatically alongside the API on port `7860`:
+
+- **Speech-to-Text** — upload audio, select model/language, transcribe or translate (with SSE streaming)
+- **Text-to-Speech** — enter text, pick voice/speed, synthesize audio
+- **Models** — view downloaded models, download new STT/TTS models
+
+Access at `http://localhost:7860`. Disable via `front.enabled: false` in `data/config/config.yaml`.
+
 ## Configuration
 
-Copy `.env.template` to `.env` and customize. All settings are environment variables loaded via `pydantic-settings`.
+All settings in `data/config/config.yaml` (YAML-based, typed via `pydantic-settings`):
+
+```yaml
+system:
+  port: 5500
+  debug: true
+
+stt:
+  model: "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+  device: cuda
+
+tts:
+  device: cuda
+  default_voice: af_heart
+
+front:
+  enabled: true
+  port: 7860
+```
 
 ## Data Layout
 
 ```
 data/
-├── config/    # Tracked in git — app configuration files
-└── models/    # Gitignored — downloaded ML models (managed at runtime)
+├── config/
+│   └── config.yaml   # Tracked in git — all app configuration
+└── models/
+    ├── stt/           # Gitignored — downloaded Whisper models
+    └── tts/           # Gitignored — downloaded Kokoro models
 ```

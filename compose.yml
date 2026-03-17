@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     ports:
       - "${API_PORT:-5500}:5500"
+      - "${FRONT_PORT:-7860}:7860"
     volumes:
       - ./data/config:/app/data/config
       - models:/app/data/models

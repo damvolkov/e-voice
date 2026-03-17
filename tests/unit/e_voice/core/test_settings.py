@@ -7,8 +7,8 @@ import pytest
 from e_voice.core.settings import (
     ComputeType,
     DeviceType,
-    STTConfig,
     Settings,
+    STTConfig,
     TTSConfig,
     VADConfig,
     read_pyproject,

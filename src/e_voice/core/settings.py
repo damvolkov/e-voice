@@ -157,6 +157,14 @@ class StreamingConfig(BaseModel):
     inactivity_flush_seconds: float = Field(default=3.0, ge=0.5)
 
 
+class FrontConfig(BaseModel):
+    """Gradio UI settings."""
+
+    enabled: bool = True
+    port: int = Field(default=7860, ge=1, le=65535)
+    share: bool = False
+
+
 ##### MAIN SETTINGS #####
 
 
@@ -179,6 +187,7 @@ class Settings(BaseSettings):
     tts: TTSConfig = TTSConfig()
     vad: VADConfig = VADConfig()
     streaming: StreamingConfig = StreamingConfig()
+    front: FrontConfig = FrontConfig()
 
     model_config = SettingsConfigDict(
         yaml_file=str(BASE_DIR / "data" / "config" / "config.yaml"),

@@ -13,8 +13,10 @@ from e_voice.core.websocket import WebSocketHandler
 from e_voice.events.kokoro_model import KokoroModelEvent
 from e_voice.events.process_pool import ProcessPoolEvent
 from e_voice.events.whisper_model import WhisperModelEvent
+from e_voice.front import launch_background as launch_gradio
 from e_voice.middlewares.base import MiddlewareHandler
 from e_voice.middlewares.files import FileUploadOpenAPIMiddleware
+from e_voice.middlewares.swagger import SwaggerBrandingMiddleware
 from e_voice.websockets.stt import ws_stt
 from e_voice.websockets.tts import ws_tts
 
@@ -33,9 +35,10 @@ websockets.register(ws_tts)
 
 
 async def startup() -> None:
-    """Startup: lifespan first, then inject WS dependencies."""
+    """Startup: lifespan first, then inject WS dependencies, then Gradio UI."""
     await lifespan.startup()
     websockets.inject_dependencies()
+    launch_gradio()
 
 
 app.startup_handler(startup)
@@ -44,6 +47,7 @@ app.shutdown_handler(lifespan.shutdown)
 # Middlewares
 middlewares = MiddlewareHandler(app)
 middlewares.register(FileUploadOpenAPIMiddleware)
+middlewares.register(SwaggerBrandingMiddleware)
 
 # HTTP Routers
 app.include_router(health_router)

@@ -94,7 +94,9 @@ async def test_speech_different_voices(openai_client: AsyncOpenAI) -> None:
 
 async def test_speech_long_text(openai_client: AsyncOpenAI) -> None:
     """SDK speech handles longer text input."""
-    long_text = "This is a longer sentence that tests the ability of the TTS engine to handle multi-word input correctly."
+    long_text = (
+        "This is a longer sentence that tests the ability of the TTS engine to handle multi-word input correctly."
+    )
     response = await openai_client.audio.speech.create(
         model="kokoro",
         input=long_text,

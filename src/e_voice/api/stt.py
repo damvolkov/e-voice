@@ -199,5 +199,3 @@ async def get_model(model_id: str, global_dependencies) -> Response:
         headers={"content-type": "application/json"},
         description=ModelObject(id=model_id, owned_by="whisper").model_dump_json(),
     )
-
-
