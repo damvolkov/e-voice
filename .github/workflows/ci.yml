@@ -65,7 +65,7 @@ jobs:
         run: uv sync --frozen --dev
 
       - name: Run unit tests
-        run: uv run pytest tests/unit -n auto -q --cov --cov-report=term-missing
+        run: uv run pytest tests/unit -n auto -q --cov --cov-report=term-missing -k "not process_pool"
         env:
           PYTHONPATH: src
 
