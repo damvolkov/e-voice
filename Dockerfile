@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 # Builder
 # -----------------------------------------------------------------------------
-FROM ghcr.io/astral-sh/uv:0.8-python3.13-bookworm AS builder
+FROM ghcr.io/astral-sh/uv:0.8-python3.12-bookworm AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -36,7 +36,7 @@ RUN rm -rf .venv/lib/python*/site-packages/pip* \
 # -----------------------------------------------------------------------------
 # Runtime
 # -----------------------------------------------------------------------------
-FROM python:3.13-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
