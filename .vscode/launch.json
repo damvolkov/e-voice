@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "e-voice",
+            "name": "e-voice (GPU)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/e_voice/main.py",
@@ -10,6 +10,18 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src",
                 "LD_LIBRARY_PATH": "${workspaceFolder}/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:${workspaceFolder}/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib"
+            },
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "e-voice (CPU)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/e_voice/main.py",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
             },
             "justMyCode": false,
             "console": "integratedTerminal"

@@ -4,6 +4,7 @@
 PROJECT ?= e-voice
 PACKAGE ?= src/e_voice
 SERVICE_PORT ?= 5500
+GRADIO_PORT ?= 5600
 
 OS := $(shell uname -s)
 
@@ -22,43 +23,40 @@ export LD_LIBRARY_PATH := $(NVIDIA_LIBS):$(LD_LIBRARY_PATH)
 
 COMPOSE_FILE := compose.yml
 
-.PHONY: help install sync lock lint type test test-integration check dev prod run \
-        stt tts docker-build docker-cpu docker-gpu docker-down log clean
+.PHONY: help install sync lock lint type test test-integration check \
+        dev stt tts docker-up docker-down docker-build log clean
 
 # -----------------------------------------------------------------------------
 # Help
 # -----------------------------------------------------------------------------
 help:
-	@echo "$(BOLD)$(BLUE)e-voice$(RESET) - Speech API (Robyn + faster-whisper + Kokoro)"
+	@echo "$(BOLD)$(BLUE)e-voice$(RESET) — Speech API (Robyn + faster-whisper + Kokoro)"
 	@echo ""
 	@echo "$(BOLD)Setup:$(RESET)"
-	@echo "  $(GREEN)make install$(RESET)      Install uv, dependencies, and pre-commit hooks"
-	@echo "  $(GREEN)make sync$(RESET)         Sync dependencies from lockfile"
-	@echo "  $(GREEN)make lock$(RESET)         Update lockfile"
+	@echo "  $(GREEN)make install$(RESET)          Install uv, deps, pre-commit hooks"
+	@echo "  $(GREEN)make sync$(RESET)             Sync dependencies from lockfile"
 	@echo ""
 	@echo "$(BOLD)Development:$(RESET)"
-	@echo "  $(GREEN)make dev$(RESET)          Start dev server"
-	@echo "  $(GREEN)make prod$(RESET)         Start production server"
+	@echo "  $(GREEN)make dev$(RESET)              API on :$(SERVICE_PORT), Gradio UI on :$(GRADIO_PORT)"
 	@echo ""
 	@echo "$(BOLD)Live test (requires running server):$(RESET)"
-	@echo "  $(GREEN)make stt$(RESET)          Stream mic audio → STT via WebSocket (ffmpeg + websocat)"
-	@echo "  $(GREEN)make tts$(RESET)          Send text → TTS via WebSocket, play audio (websocat + ffplay)"
+	@echo "  $(GREEN)make stt$(RESET)              mic → WebSocket STT  (ffmpeg + websocat)"
+	@echo "  $(GREEN)make tts$(RESET)              text → WebSocket TTS (websocat)"
 	@echo ""
 	@echo "$(BOLD)Quality:$(RESET)"
-	@echo "  $(GREEN)make lint$(RESET)         Run ruff linter with auto-fix"
-	@echo "  $(GREEN)make format$(RESET)       Format code with ruff"
-	@echo "  $(GREEN)make typecheck$(RESET)    Run ty type checker"
-	@echo "  $(GREEN)make test$(RESET)         Run unit tests"
+	@echo "  $(GREEN)make lint$(RESET)             Ruff check + format"
+	@echo "  $(GREEN)make type$(RESET)             ty type checker"
+	@echo "  $(GREEN)make test$(RESET)             Unit tests (parallel, coverage >90%)"
+	@echo "  $(GREEN)make check$(RESET)            lint + type + test"
 	@echo ""
 	@echo "$(BOLD)Docker:$(RESET)"
-	@echo "  $(GREEN)make docker-build$(RESET) Build Docker image"
-	@echo "  $(GREEN)make docker-cpu$(RESET)   Start in CPU mode"
-	@echo "  $(GREEN)make docker-gpu$(RESET)   Start in GPU mode (nvidia-container-toolkit)"
-	@echo "  $(GREEN)make docker-down$(RESET)  Stop all services"
-	@echo "  $(GREEN)make log$(RESET)          Tail container logs"
+	@echo "  $(GREEN)make docker-up$(RESET)        Build + start (GPU, port :$(SERVICE_PORT))"
+	@echo "  $(GREEN)make docker-down$(RESET)      Stop"
+	@echo "  $(GREEN)make docker-build$(RESET)     Build image only"
+	@echo "  $(GREEN)make log$(RESET)              Tail container logs"
 	@echo ""
 	@echo "$(BOLD)Cleanup:$(RESET)"
-	@echo "  $(GREEN)make clean$(RESET)        Remove cache and build artifacts"
+	@echo "  $(GREEN)make clean$(RESET)            Remove caches and build artifacts"
 
 # -----------------------------------------------------------------------------
 # Setup & Dependencies
@@ -104,15 +102,11 @@ test-integration:
 check: lint type test
 
 # -----------------------------------------------------------------------------
-# Development
+# Development — API on :5500, Gradio on :5600
 # -----------------------------------------------------------------------------
 dev:
+	@echo "$(CYAN)=== API: http://localhost:$(SERVICE_PORT) | Gradio: http://localhost:$(GRADIO_PORT) ===$(RESET)"
 	@LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
-
-prod:
-	@LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -c "from e_voice.main import main; main()"
-
-run: dev
 
 # -----------------------------------------------------------------------------
 # Live test (requires running server)
@@ -137,25 +131,19 @@ tts:
 	@websocat "ws://localhost:$(SERVICE_PORT)/v1/audio/speech"
 
 # -----------------------------------------------------------------------------
-# Docker
+# Docker — self-contained image (API + Gradio + nginx on :80)
 # -----------------------------------------------------------------------------
 docker-build:
 	@echo "$(CYAN)=== Building Docker image ===$(RESET)"
 	@docker compose -f $(COMPOSE_FILE) build
 	@echo "$(GREEN)=== Build complete ===$(RESET)"
 
-docker-cpu: docker-build
-	@echo "$(CYAN)=== Starting evoice (CPU) ===$(RESET)"
-	@docker compose -f $(COMPOSE_FILE) --profile cpu up -d
-	@echo "$(GREEN)=== Running at http://localhost:$(SERVICE_PORT) ===$(RESET)"
-
-docker-gpu: docker-build
-	@echo "$(CYAN)=== Starting evoice (GPU) ===$(RESET)"
-	@docker compose -f $(COMPOSE_FILE) --profile gpu up -d
-	@echo "$(GREEN)=== Running at http://localhost:$(SERVICE_PORT) ===$(RESET)"
+docker-up: docker-build
+	@docker compose -f $(COMPOSE_FILE) up -d
+	@echo "$(GREEN)=== Running at http://localhost:$(SERVICE_PORT) (UI + API + docs) ===$(RESET)"
 
 docker-down:
-	@docker compose -f $(COMPOSE_FILE) --profile cpu --profile gpu down
+	@docker compose -f $(COMPOSE_FILE) down
 
 log:
 	@docker compose -f $(COMPOSE_FILE) logs -f
