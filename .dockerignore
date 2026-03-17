@@ -1,0 +1,10 @@
+*
+
+!.git/
+!src/
+!pyproject.toml
+!uv.lock
+!README.md
+!docker/
+!data/config/config.yaml
+!assets/

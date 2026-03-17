@@ -1,7 +1,7 @@
 import multiprocessing
-import os
 import socket
 import time
+from contextlib import suppress
 
 import httpx
 import pytest
@@ -20,7 +20,6 @@ def _find_free_port() -> int:
 
 def _run_server(port: int) -> None:
     """Start e-voice on the given port. Runs in a subprocess."""
-    os.environ["GRADIO_ENABLED"] = "false"
     from e_voice.core.settings import settings as st
 
     st.system.port = port
@@ -76,14 +75,16 @@ def base_url(e_voice_server: dict) -> str:
     return e_voice_server["base_url"]
 
 
-@pytest.fixture
-async def http_client(base_url: str) -> httpx.AsyncClient:
-    async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
-        yield client
+@pytest.fixture(scope="session")
+async def http_client(base_url: str):
+    client = httpx.AsyncClient(base_url=base_url, timeout=30.0)
+    yield client
+    with suppress(RuntimeError):
+        await client.aclose()
 
 
 @pytest.fixture(scope="session")
-async def audioeval(e_voice_server: dict) -> AudioEval:
+async def audioeval(e_voice_server: dict):
     host = e_voice_server["host"]
     port = e_voice_server["port"]
     client = AudioEval(
@@ -91,4 +92,5 @@ async def audioeval(e_voice_server: dict) -> AudioEval:
         tts_url=f"http://{host}:{port}/v1/audio/speech",
     )
     yield client
-    await client.aclose()
+    with suppress(RuntimeError):
+        await client.aclose()
