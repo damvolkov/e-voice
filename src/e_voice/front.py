@@ -147,6 +147,26 @@ def _refresh_models() -> str:
 
 ##### GRADIO APP FACTORY #####
 
+_THEME = gr.themes.Base(
+    primary_hue=gr.themes.colors.blue,
+    secondary_hue=gr.themes.colors.cyan,
+    neutral_hue=gr.themes.colors.gray,
+).set(
+    body_background_fill="#1a1a2e",
+    body_background_fill_dark="#1a1a2e",
+    block_background_fill="#16213e",
+    block_background_fill_dark="#16213e",
+    block_border_color="#2c3e6b",
+    block_border_color_dark="#2c3e6b",
+    button_primary_background_fill="#1e6091",
+    button_primary_background_fill_dark="#1e6091",
+    button_primary_background_fill_hover="#2980b9",
+    input_background_fill="#0f3460",
+    input_background_fill_dark="#0f3460",
+    input_border_color="#2c3e6b",
+    input_border_color_dark="#2c3e6b",
+)
+
 
 def create_app() -> gr.Blocks:
     """Build the Gradio Blocks UI."""
@@ -155,27 +175,7 @@ def create_app() -> gr.Blocks:
     if logo_path.exists():
         logo_html = f'<div style="text-align:center;padding:10px"><img src="/file={logo_path}" width="300"></div>'
 
-    theme = gr.themes.Base(
-        primary_hue=gr.themes.colors.blue,
-        secondary_hue=gr.themes.colors.cyan,
-        neutral_hue=gr.themes.colors.gray,
-    ).set(
-        body_background_fill="#1a1a2e",
-        body_background_fill_dark="#1a1a2e",
-        block_background_fill="#16213e",
-        block_background_fill_dark="#16213e",
-        block_border_color="#2c3e6b",
-        block_border_color_dark="#2c3e6b",
-        button_primary_background_fill="#1e6091",
-        button_primary_background_fill_dark="#1e6091",
-        button_primary_background_fill_hover="#2980b9",
-        input_background_fill="#0f3460",
-        input_background_fill_dark="#0f3460",
-        input_border_color="#2c3e6b",
-        input_border_color_dark="#2c3e6b",
-    )
-
-    with gr.Blocks(title="e-voice", theme=theme, css=_CSS) as app:
+    with gr.Blocks(title="e-voice") as app:
         if logo_html:
             gr.HTML(logo_html)
         gr.Markdown(f"<center><small>v{st.API_VERSION} · API at <code>{_base_url()}</code></small></center>")
@@ -295,4 +295,5 @@ def launch_background() -> None:
 
     thread = threading.Thread(target=_run, daemon=True, name="gradio-ui")
     thread.start()
+    logger.info("gradio UI started", step="START", url=f"http://localhost:{st.front.port}")
     logger.info("gradio UI started", step="START", port=st.front.port)

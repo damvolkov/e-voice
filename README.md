@@ -18,13 +18,19 @@
 ```bash
 # Local development
 make install
-make dev                  # GPU (default)
-WHISPER_DEVICE=cpu make dev  # CPU fallback
+make dev              # API on :5500, Gradio UI on :5600
 
-# Docker
-make docker-gpu           # GPU (nvidia-container-toolkit)
-make docker-cpu           # CPU
+# Docker (nginx gateway unifies everything on :5500)
+docker compose up -d  # → localhost:5500 (UI + API + docs)
 ```
+
+| Service | Local | Docker |
+|---------|-------|--------|
+| API | `localhost:5500/v1/...` | `localhost:5500/v1/...` |
+| Docs | `localhost:5500/docs` | `localhost:5500/docs` |
+| Gradio UI | `localhost:5600` | `localhost:5500` (root) |
+| WebSocket STT | `ws://localhost:5500/v1/audio/transcriptions` | Same |
+| WebSocket TTS | `ws://localhost:5500/v1/audio/speech` | Same |
 
 ## API Reference
 
@@ -244,13 +250,18 @@ make tts           # text -> WebSocket TTS (websocat)
 
 ## Web UI (Gradio)
 
-A Gradio playground launches automatically alongside the API on port `7860`:
+A Gradio playground launches automatically alongside the API:
 
 - **Speech-to-Text** — upload audio, select model/language, transcribe or translate (with SSE streaming)
 - **Text-to-Speech** — enter text, pick voice/speed, synthesize audio
 - **Models** — view downloaded models, download new STT/TTS models
 
-Access at `http://localhost:7860`. Disable via `front.enabled: false` in `data/config/config.yaml`.
+| Environment | URL |
+|-------------|-----|
+| Local | `http://localhost:5600` |
+| Docker | `http://localhost:5500` (nginx proxies root → Gradio) |
+
+Disable via `front.enabled: false` in `data/config/config.yaml`.
 
 ## Configuration
 

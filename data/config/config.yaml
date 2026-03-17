@@ -42,5 +42,5 @@ streaming:
 
 front:
   enabled: true
-  port: 7860
+  port: 5600
   share: false

@@ -161,7 +161,7 @@ class FrontConfig(BaseModel):
     """Gradio UI settings."""
 
     enabled: bool = True
-    port: int = Field(default=7860, ge=1, le=65535)
+    port: int = Field(default=5600, ge=1, le=65535)
     share: bool = False
 
 
