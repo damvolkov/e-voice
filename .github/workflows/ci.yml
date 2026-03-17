@@ -1,22 +1,24 @@
 # =============================================================================
-# robyn-ml-api CI Pipeline
-# Uses uv for fast, reproducible builds with frozen lockfile
+# e-voice CI — Lint, Test, Build & Publish Docker to GHCR
 # =============================================================================
 
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
 env:
   PYTHON_VERSION: "3.12"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Lint & Format Check
+  # Lint & Format
   # ---------------------------------------------------------------------------
   lint:
     name: Lint
@@ -24,41 +26,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-      - name: Cache uv
-        uses: actions/cache@v4
+        uses: astral-sh/setup-uv@v6
         with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-
+          enable-cache: true
 
-      - name: Sync dependencies (frozen)
-        run: |
-          source ~/.cargo/env
-          uv venv --python ${{ env.PYTHON_VERSION }}
-          source .venv/bin/activate
-          uv sync --frozen
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
-      - name: Run linter
-        run: |
-          source .venv/bin/activate
-          ruff check app/
+      - name: Sync dependencies
+        run: uv sync --frozen --dev
 
-      - name: Check formatting
-        run: |
-          source .venv/bin/activate
-          ruff format --check app/
+      - name: Ruff check
+        run: uv run ruff check src/e_voice/ tests/
+
+      - name: Ruff format
+        run: uv run ruff format --check src/e_voice/ tests/
 
   # ---------------------------------------------------------------------------
-  # Tests
+  # Unit Tests
   # ---------------------------------------------------------------------------
   test:
     name: Test
@@ -67,59 +53,65 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-
-      - name: Cache uv
-        uses: actions/cache@v4
+        uses: astral-sh/setup-uv@v6
         with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-
+          enable-cache: true
 
-      - name: Sync dependencies (frozen)
-        run: |
-          source ~/.cargo/env
-          uv venv --python ${{ env.PYTHON_VERSION }}
-          source .venv/bin/activate
-          uv sync --frozen
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
 
-      - name: Run tests
-        run: |
-          source .venv/bin/activate
-          pytest test/unit -v --tb=short
+      - name: Sync dependencies
+        run: uv sync --frozen --dev
+
+      - name: Run unit tests
+        run: uv run pytest tests/unit -n auto -q --cov --cov-report=term-missing
         env:
-          PYTHONPATH: ${{ github.workspace }}
-          DEBUG: "False"
+          PYTHONPATH: src
 
   # ---------------------------------------------------------------------------
-  # Docker Build
+  # Build & Publish Docker Image to GHCR
   # ---------------------------------------------------------------------------
   docker:
-    name: Docker Build
+    name: Docker
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: false
-          tags: robyn-ml-api:${{ github.sha }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            ENABLE_DEBUG=false
-
