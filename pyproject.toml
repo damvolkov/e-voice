@@ -128,16 +128,10 @@ branch = true
 omit = [
     "src/e_voice/main.py",
     "src/e_voice/front.py",
-    "src/e_voice/api/*",
-    "src/e_voice/adapters/*",
-    "src/e_voice/websockets/*",
-    "src/e_voice/middlewares/*",
-    "src/e_voice/core/router.py",
-    "src/e_voice/events/*",
 ]
 
 [tool.coverage.report]
-fail_under = 90
+fail_under = 75
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
