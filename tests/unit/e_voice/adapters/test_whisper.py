@@ -1,5 +1,3 @@
-"""Unit tests for adapters/whisper.py — static formatters and subtitle generation."""
-
 from dataclasses import dataclass
 
 import numpy as np
@@ -227,7 +225,6 @@ async def test_format_vtt_full() -> None:
     ids=["cuda-fp16", "cpu-int8", "auto-default"],
 )
 async def test_adapter_respects_device_config(device: DeviceType, compute: ComputeType) -> None:
-    """WhisperAdapter stores the device config from STTConfig."""
     config = STTConfig(device=device, compute_type=compute)
     adapter = WhisperAdapter(config=config)
     assert adapter._config.device == device

@@ -1,10 +1,3 @@
-# =============================================================================
-# e-voice Dockerfile — self-contained: API + Gradio UI + nginx gateway
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Builder — resolve deps + version from git
-# -----------------------------------------------------------------------------
 FROM ghcr.io/astral-sh/uv:0.8-python3.12-bookworm AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -30,9 +23,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 RUN rm -rf .venv/lib/python*/site-packages/{pip,setuptools}* .venv/include
 
-# -----------------------------------------------------------------------------
-# Runtime — API + Gradio + nginx (single container)
-# -----------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -51,20 +41,13 @@ COPY --from=builder --chown=app:app /app/src src/
 COPY --from=builder --chown=app:app /app/pyproject.toml pyproject.toml
 COPY --from=builder --chown=app:app /app/README.md README.md
 
-# Nginx config
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
-# Default config.yaml (user can override via volume mount)
 RUN mkdir -p data/models data/config && chown -R app:app data/
 COPY --chown=app:app data/config/config.yaml data/config/config.yaml
-
-# Assets (logo for Gradio UI)
 COPY --chown=app:app assets/ assets/
-
-# Entrypoint
 COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
 
-# nginx needs write access to its runtime dirs
 RUN chown -R app:app /var/log/nginx /var/lib/nginx /run
 
 USER 1000

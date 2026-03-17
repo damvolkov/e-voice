@@ -1,5 +1,3 @@
-"""Unit tests for core/settings.py — config resolution and model construction."""
-
 from pathlib import Path
 
 import pytest

@@ -1,5 +1,3 @@
-"""Unit tests for streaming/audio.py — AudioBuffer bounded circular buffer."""
-
 import numpy as np
 import pytest
 
@@ -7,7 +5,6 @@ from e_voice.streaming.audio import SAMPLE_RATE, AudioBuffer
 
 
 def _seconds_of_audio(seconds: float, rate: int = SAMPLE_RATE) -> np.ndarray:
-    """Generate silence (zeros) of given duration."""
     return np.zeros(int(seconds * rate), dtype=np.float32)
 
 

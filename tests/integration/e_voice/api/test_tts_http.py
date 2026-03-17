@@ -1,5 +1,3 @@
-"""TTS HTTP POST tests — /v1/audio/speech (non-streaming), /v1/audio/voices."""
-
 import orjson
 import pytest
 from pytest_audioeval.client import AudioEval
@@ -28,7 +26,6 @@ async def test_speech_format(
     audioeval: AudioEval,
     audio_format: str,
 ) -> None:
-    """Each audio format returns 200 with correct content-type and non-empty body."""
     response = await audioeval.tts.post(
         json={
             "input": "Hello world.",
@@ -45,7 +42,6 @@ async def test_speech_format(
 async def test_speech_custom_voice(
     audioeval: AudioEval,
 ) -> None:
-    """Speech synthesis with a specific voice parameter."""
     response = await audioeval.tts.post(
         json={
             "input": "Testing voice selection.",
@@ -61,7 +57,6 @@ async def test_speech_custom_voice(
 async def test_speech_custom_speed(
     audioeval: AudioEval,
 ) -> None:
-    """Speech synthesis respects speed parameter."""
     response = await audioeval.tts.post(
         json={
             "input": "Speed test.",
@@ -78,7 +73,6 @@ async def test_speech_custom_speed(
 async def test_speech_custom_language(
     audioeval: AudioEval,
 ) -> None:
-    """Speech synthesis with explicit lang parameter."""
     response = await audioeval.tts.post(
         json={
             "input": "Hola mundo.",
@@ -95,7 +89,6 @@ async def test_speech_custom_language(
 async def test_speech_invalid_json_returns_422(
     audioeval: AudioEval,
 ) -> None:
-    """Invalid request body returns 422 Unprocessable Entity."""
     response = await audioeval.tts.post(json={"voice": "af_heart"})
     assert response.status_code == 422
 
@@ -106,7 +99,6 @@ async def test_speech_invalid_json_returns_422(
 async def test_speech_mp3_is_valid_audio(
     audioeval: AudioEval,
 ) -> None:
-    """MP3 output starts with valid MP3/ID3 header bytes."""
     response = await audioeval.tts.post(
         json={
             "input": "Audio validation test.",
@@ -116,7 +108,6 @@ async def test_speech_mp3_is_valid_audio(
         },
     )
     assert response.status_code == 200
-    # MP3 files start with ID3 tag or MPEG sync word
     header = response.content[:3]
     assert header in (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2")
 
@@ -124,7 +115,6 @@ async def test_speech_mp3_is_valid_audio(
 async def test_speech_wav_is_valid_audio(
     audioeval: AudioEval,
 ) -> None:
-    """WAV output starts with RIFF header."""
     response = await audioeval.tts.post(
         json={
             "input": "WAV validation test.",
@@ -144,7 +134,6 @@ async def test_voices_returns_list(
     audioeval: AudioEval,
     http_client,
 ) -> None:
-    """Voice listing returns non-empty list with expected schema."""
     response = await http_client.get("/v1/audio/voices")
     assert response.status_code == 200
 

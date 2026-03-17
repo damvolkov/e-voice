@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import threading
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -54,12 +53,11 @@ def _resolve_lang(voice: str, lang: str | None) -> str:
 class KokoroAdapter(BaseModelAdapter):
     """Manages Kokoro-ONNX TTS model lifecycle and synthesis."""
 
-    __slots__ = ("_kokoro", "_model_dir", "_gpu_lock")
+    __slots__ = ("_kokoro", "_model_dir")
 
     def __init__(self, model_dir: Path | None = None) -> None:
         self._kokoro: Kokoro | None = None
         self._model_dir = model_dir or st.MODELS_PATH / "tts"
-        self._gpu_lock = threading.Lock()
 
     ##### MODEL LIFECYCLE #####
 
@@ -139,15 +137,10 @@ class KokoroAdapter(BaseModelAdapter):
         speed: float = 1.0,
         lang: str | None = None,
     ) -> tuple[NDArray[np.float32], int]:
-        """Synthesize full audio. Returns (samples, sample_rate). GPU-lock serialized."""
+        """Synthesize full audio. Returns (samples, sample_rate)."""
         kokoro = self._lc_resolve()
         resolved_lang = _resolve_lang(voice, lang)
-        return await asyncio.to_thread(self._syn_run, kokoro, text, voice, speed, resolved_lang)
-
-    def _syn_run(self, kokoro: Kokoro, text: str, voice: str, speed: float, lang: str) -> tuple[NDArray[np.float32], int]:
-        """CPU-bound synthesis with GPU lock."""
-        with self._gpu_lock:
-            return kokoro.create(text, voice, speed, lang)
+        return await asyncio.to_thread(kokoro.create, text, voice, speed, resolved_lang)
 
     async def synthesize_stream(
         self,

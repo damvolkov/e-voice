@@ -1,9 +1,3 @@
-"""STT SSE streaming tests — /v1/audio/transcriptions with stream=true.
-
-Uses httpx-sse for SSE connection with multipart form-data.
-Audio samples provided by pytest-audioeval fixtures.
-"""
-
 import httpx
 import orjson
 from httpx_sse import aconnect_sse
@@ -16,7 +10,6 @@ async def test_transcription_sse_yields_events(
     stt_client: httpx.AsyncClient,
     en_sample,
 ) -> None:
-    """SSE streaming transcription yields at least one event."""
     events: list[str] = []
 
     async with aconnect_sse(
@@ -36,7 +29,6 @@ async def test_transcription_sse_events_contain_text(
     stt_client: httpx.AsyncClient,
     en_sample,
 ) -> None:
-    """Each SSE event contains parseable text content."""
     texts: list[str] = []
 
     async with aconnect_sse(
@@ -60,7 +52,6 @@ async def test_transcription_sse_text_format(
     stt_client: httpx.AsyncClient,
     en_sample,
 ) -> None:
-    """SSE streaming with text format yields raw text segments."""
     segments: list[str] = []
 
     async with aconnect_sse(
@@ -81,7 +72,6 @@ async def test_transcription_sse_quality(
     en_sample,
     audioeval_thresholds: dict[str, float],
 ) -> None:
-    """Concatenated SSE segments meet quality thresholds."""
     texts: list[str] = []
 
     async with aconnect_sse(
@@ -107,7 +97,6 @@ async def test_translation_sse_yields_events(
     stt_client: httpx.AsyncClient,
     es_sample,
 ) -> None:
-    """SSE streaming translation yields events with English text."""
     events: list[str] = []
 
     async with aconnect_sse(

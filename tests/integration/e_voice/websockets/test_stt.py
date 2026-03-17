@@ -1,5 +1,3 @@
-"""STT WebSocket tests — WS /v1/audio/transcriptions."""
-
 import asyncio
 
 import orjson
@@ -12,7 +10,6 @@ async def test_ws_transcription_json_format(
     audioeval: AudioEval,
     en_sample,
 ) -> None:
-    """WebSocket transcription returns valid JSON response."""
     async with audioeval.stt.ws(sample=en_sample) as session:
         await session.send_sample(en_sample, chunk_ms=200)
         await asyncio.sleep(2)
@@ -27,7 +24,6 @@ async def test_ws_transcription_quality(
     en_sample,
     audioeval_thresholds: dict[str, float],
 ) -> None:
-    """WebSocket transcription meets WER/CER quality thresholds."""
     async with audioeval.stt.ws(sample=en_sample) as session:
         await session.send_sample(en_sample, chunk_ms=200)
         await asyncio.sleep(3)
@@ -45,7 +41,6 @@ async def test_ws_transcription_text_format(
     audioeval: AudioEval,
     en_sample,
 ) -> None:
-    """WebSocket with response_format=text returns plain text."""
     async with audioeval.stt.ws(
         sample=en_sample,
         params={"response_format": "text"},
@@ -62,7 +57,6 @@ async def test_ws_transcription_verbose_json_format(
     audioeval: AudioEval,
     en_sample,
 ) -> None:
-    """WebSocket with response_format=verbose_json returns segments."""
     async with audioeval.stt.ws(
         sample=en_sample,
         params={"response_format": "verbose_json"},
@@ -82,7 +76,6 @@ async def test_ws_transcription_with_language(
     audioeval: AudioEval,
     es_sample,
 ) -> None:
-    """WebSocket with explicit language parameter."""
     async with audioeval.stt.ws(
         sample=es_sample,
         params={"language": "es"},
@@ -99,12 +92,10 @@ async def test_ws_transcription_text_message_ignored(
     audioeval: AudioEval,
     en_sample,
 ) -> None:
-    """WebSocket ignores text messages (expects binary audio)."""
     async with audioeval.stt.ws(sample=en_sample) as session:
         await session.send_text("this is not audio")
         await asyncio.sleep(0.5)
 
-        # Should not crash; send real audio after
         await session.send_sample(en_sample, chunk_ms=200)
         await asyncio.sleep(2)
 
@@ -117,7 +108,6 @@ async def test_ws_transcription_multiple_chunks(
     audioeval: AudioEval,
     en_counting_sample,
 ) -> None:
-    """WebSocket handles longer audio streamed in chunks."""
     async with audioeval.stt.ws(sample=en_counting_sample) as session:
         await session.send_sample(en_counting_sample, chunk_ms=100)
         await asyncio.sleep(3)

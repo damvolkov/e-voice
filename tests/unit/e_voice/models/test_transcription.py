@@ -1,5 +1,3 @@
-"""Unit tests for models/transcription.py — Pydantic model validation."""
-
 import pytest
 
 from e_voice.models.transcription import (

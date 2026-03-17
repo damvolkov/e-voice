@@ -1,5 +1,3 @@
-"""Unit tests for streaming/transcriber.py — LocalAgreement, SessionState, helpers."""
-
 from unittest.mock import AsyncMock
 
 import numpy as np
@@ -26,7 +24,6 @@ def _w(word: str, start: float = 0.0, end: float = 0.0) -> StreamingWord:
 
 
 async def test_agreement_first_call_returns_empty() -> None:
-    """First call has nothing to compare — all words become unconfirmed."""
     la = LocalAgreement()
     confirmed = WordBuffer()
     incoming = [_w("hello", 0.0, 0.5), _w("world", 0.5, 1.0)]
@@ -36,7 +33,6 @@ async def test_agreement_first_call_returns_empty() -> None:
 
 
 async def test_agreement_second_call_confirms_prefix() -> None:
-    """Second call confirms common prefix between consecutive transcriptions."""
     la = LocalAgreement()
     confirmed = WordBuffer()
 
@@ -75,21 +71,16 @@ async def test_agreement_unconfirmed_text() -> None:
 
 
 async def test_agreement_progressive_confirmation() -> None:
-    """Simulate 3 iterations of growing audio."""
     la = LocalAgreement()
     confirmed = WordBuffer()
 
-    # Iteration 1: "Hola" → all unconfirmed
     la.merge(confirmed, [_w("Hola", 0.0, 0.5)])
 
-    # Iteration 2: "Hola mundo" → "Hola" confirmed (common prefix)
     new = la.merge(confirmed, [_w("Hola", 0.0, 0.5), _w("mundo", 0.5, 1.0)])
     assert len(new) == 1
     assert new[0].word == "Hola"
     confirmed.extend(new)
 
-    # Iteration 3: "Hola mundo qué" → "mundo" confirmed
-    # incoming after confirmed.end(0.5) - 0.1 = 0.4 → filters to [mundo, qué]
     new = la.merge(confirmed, [_w("Hola", 0.0, 0.5), _w("mundo", 0.5, 1.0), _w("qué", 1.0, 1.5)])
     assert len(new) == 1
     assert new[0].word == "mundo"
@@ -226,7 +217,6 @@ async def test_extract_words_empty_segments() -> None:
 
 
 async def test_process_audio_chunk_accumulates_before_threshold() -> None:
-    """Returns None until enough audio accumulated (min_duration)."""
     session = SessionState(language="es")
     mock_whisper = AsyncMock()
 
@@ -241,7 +231,6 @@ async def test_process_audio_chunk_transcribes_when_ready(
     mock_segments_with_words,
     mock_info,
 ) -> None:
-    """Transcribes when enough audio has accumulated."""
     session = SessionState(language="es")
     mock_whisper = AsyncMock()
     mock_whisper.transcribe.return_value = (mock_segments_with_words, mock_info)
@@ -257,7 +246,6 @@ async def test_process_audio_chunk_confirms_on_second_call(
     mock_segments_with_words,
     mock_info,
 ) -> None:
-    """Second call with same words confirms them via LocalAgreement."""
     session = SessionState(language="es")
     mock_whisper = AsyncMock()
     mock_whisper.transcribe.return_value = (mock_segments_with_words, mock_info)
@@ -275,7 +263,6 @@ async def test_process_audio_chunk_silence_returns_none(
     mock_segments_silence,
     mock_info,
 ) -> None:
-    """Silence segments (high no_speech_prob) produce no output."""
     session = SessionState(language="es")
     mock_whisper = AsyncMock()
     mock_whisper.transcribe.return_value = (mock_segments_silence, mock_info)

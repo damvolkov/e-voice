@@ -1,5 +1,3 @@
-"""Unit tests for adapters/kokoro.py — device config, language resolution, lifecycle."""
-
 import pytest
 
 from e_voice.adapters.kokoro import _ONNX_PROVIDERS, KokoroAdapter, _resolve_lang

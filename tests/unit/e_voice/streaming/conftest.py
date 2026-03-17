@@ -1,5 +1,3 @@
-"""Fixtures for streaming unit tests."""
-
 from dataclasses import dataclass
 
 import pytest
@@ -7,8 +5,6 @@ import pytest
 
 @dataclass(slots=True)
 class MockSegmentWord:
-    """Mock faster-whisper word."""
-
     word: str
     start: float
     end: float
@@ -17,8 +13,6 @@ class MockSegmentWord:
 
 @dataclass(slots=True)
 class MockSegment:
-    """Mock faster-whisper Segment."""
-
     id: int = 0
     seek: int = 0
     start: float = 0.0
@@ -38,8 +32,6 @@ class MockSegment:
 
 @dataclass(slots=True)
 class MockTranscriptionInfo:
-    """Mock faster-whisper TranscriptionInfo."""
-
     language: str = "es"
     language_probability: float = 0.9
     duration: float = 1.0
@@ -55,7 +47,6 @@ class MockTranscriptionInfo:
 
 @pytest.fixture
 def mock_segments_with_words() -> list[MockSegment]:
-    """Segments with word-level timestamps."""
     return [
         MockSegment(
             text=" Hola mundo.",
@@ -72,7 +63,6 @@ def mock_segments_with_words() -> list[MockSegment]:
 
 @pytest.fixture
 def mock_segments_silence() -> list[MockSegment]:
-    """Segments with high no_speech_prob (silence)."""
     return [
         MockSegment(
             text=" ",

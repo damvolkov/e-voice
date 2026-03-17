@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "e-voice (GPU)",
+            "name": "e-voice",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/e_voice/main.py",

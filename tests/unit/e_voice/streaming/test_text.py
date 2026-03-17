@@ -1,5 +1,3 @@
-"""Unit tests for streaming/text.py — word utilities and LocalAgreement primitives."""
-
 import pytest
 
 from e_voice.streaming.text import (
@@ -16,7 +14,6 @@ from e_voice.streaming.text import (
 
 
 def _w(word: str, start: float = 0.0, end: float = 0.0) -> StreamingWord:
-    """Shortcut to create a StreamingWord."""
     return StreamingWord(word=word, start=start, end=end)
 
 

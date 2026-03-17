@@ -1,5 +1,3 @@
-"""Unit tests for core/helpers.py — audio utilities."""
-
 import base64
 from io import BytesIO
 
@@ -143,7 +141,6 @@ async def test_encode_audio_chunk_pcm() -> None:
 
 
 async def test_audio_samples_from_file_wav() -> None:
-    """Decode a WAV file to float32 mono."""
     from e_voice.core.helpers import audio_samples_from_file
 
     buf = BytesIO()
@@ -157,7 +154,6 @@ async def test_audio_samples_from_file_wav() -> None:
 
 
 async def test_audio_samples_from_file_resamples() -> None:
-    """Resamples 48kHz to 16kHz."""
     from e_voice.core.helpers import audio_samples_from_file
 
     buf = BytesIO()

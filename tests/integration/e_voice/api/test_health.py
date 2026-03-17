@@ -1,5 +1,3 @@
-"""Health endpoint tests — GET /health."""
-
 import httpx
 import orjson
 
@@ -7,7 +5,6 @@ import orjson
 
 
 async def test_health_returns_200(http_client: httpx.AsyncClient) -> None:
-    """Health check returns 200 with healthy status."""
     response = await http_client.get("/health")
     assert response.status_code == 200
 
@@ -16,7 +13,6 @@ async def test_health_returns_200(http_client: httpx.AsyncClient) -> None:
 
 
 async def test_health_response_schema(http_client: httpx.AsyncClient) -> None:
-    """Health response contains service name and version."""
     response = await http_client.get("/health")
     assert response.status_code == 200
 

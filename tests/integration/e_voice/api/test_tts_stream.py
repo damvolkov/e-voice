@@ -1,5 +1,3 @@
-"""TTS HTTP chunked streaming tests — /v1/audio/speech with stream=true, stream_format=audio."""
-
 import pytest
 from pytest_audioeval.client import AudioEval
 
@@ -27,7 +25,6 @@ async def test_speech_stream_audio_chunks(
     audioeval: AudioEval,
     audio_format: str,
 ) -> None:
-    """Chunked streaming returns audio bytes with correct content-type."""
     chunks: list[bytes] = []
 
     async with audioeval.tts.stream(
@@ -51,7 +48,6 @@ async def test_speech_stream_audio_chunks(
 async def test_speech_stream_multiple_chunks(
     audioeval: AudioEval,
 ) -> None:
-    """Longer text produces multiple audio chunks."""
     chunks: list[bytes] = []
 
     async with audioeval.tts.stream(
@@ -74,7 +70,6 @@ async def test_speech_stream_multiple_chunks(
 async def test_speech_stream_pcm_raw_bytes(
     audioeval: AudioEval,
 ) -> None:
-    """PCM streaming returns raw PCM16 little-endian bytes (even-length)."""
     all_bytes = b""
 
     async with audioeval.tts.stream(
@@ -89,6 +84,5 @@ async def test_speech_stream_pcm_raw_bytes(
         async for chunk in response.aiter_bytes():
             all_bytes += chunk
 
-    # PCM16 samples are 2 bytes each → total length must be even
     assert len(all_bytes) > 0
     assert len(all_bytes) % 2 == 0

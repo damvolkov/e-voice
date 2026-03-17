@@ -1,5 +1,3 @@
-"""Model management endpoint tests — /v1/models, /v1/api/ps."""
-
 import httpx
 import orjson
 
@@ -7,7 +5,6 @@ import orjson
 
 
 async def test_list_models_returns_list(http_client: httpx.AsyncClient) -> None:
-    """List models returns OpenAI-compatible model list."""
     response = await http_client.get("/v1/models")
     assert response.status_code == 200
 
@@ -19,7 +16,6 @@ async def test_list_models_returns_list(http_client: httpx.AsyncClient) -> None:
 
 
 async def test_list_models_contains_loaded_models(http_client: httpx.AsyncClient) -> None:
-    """At least the default model is loaded and listed."""
     response = await http_client.get("/v1/models")
     assert response.status_code == 200
 
@@ -37,8 +33,6 @@ async def test_list_models_contains_loaded_models(http_client: httpx.AsyncClient
 
 
 async def test_get_model_loaded(http_client: httpx.AsyncClient) -> None:
-    """Get info for a loaded model returns 200."""
-    # First get the list to find a loaded model
     list_response = await http_client.get("/v1/models")
     models = orjson.loads(list_response.content)["data"]
     assert len(models) > 0
@@ -53,7 +47,6 @@ async def test_get_model_loaded(http_client: httpx.AsyncClient) -> None:
 
 
 async def test_get_model_not_found(http_client: httpx.AsyncClient) -> None:
-    """Get info for a non-existent model returns 404."""
     response = await http_client.get("/v1/models/non-existent-model-id")
     assert response.status_code == 404
 
@@ -65,7 +58,6 @@ async def test_get_model_not_found(http_client: httpx.AsyncClient) -> None:
 
 
 async def test_list_loaded_models(http_client: httpx.AsyncClient) -> None:
-    """List currently loaded models via experimental endpoint."""
     response = await http_client.get("/v1/api/ps")
     assert response.status_code == 200
 
@@ -78,8 +70,6 @@ async def test_list_loaded_models(http_client: httpx.AsyncClient) -> None:
 
 
 async def test_load_model_already_loaded_returns_409(http_client: httpx.AsyncClient) -> None:
-    """Loading an already loaded model returns 409 Conflict."""
-    # Find a loaded model
     list_response = await http_client.get("/v1/api/ps")
     models = orjson.loads(list_response.content)["models"]
     assert len(models) > 0
@@ -96,7 +86,6 @@ async def test_load_model_already_loaded_returns_409(http_client: httpx.AsyncCli
 
 
 async def test_unload_model_not_found(http_client: httpx.AsyncClient) -> None:
-    """Unloading a non-loaded model returns 404."""
     response = await http_client.delete("/v1/api/ps/non-existent-model-id")
     assert response.status_code == 404
 

@@ -1,5 +1,3 @@
-"""Tests for process pool event."""
-
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 
@@ -9,12 +7,10 @@ from e_voice.events.process_pool import create_process_pool, process_pool_contex
 
 
 def _cpu_bound_task(x: int) -> int:
-    """Simple CPU-bound task for testing."""
     return x * x
 
 
 def test_create_process_pool_returns_executor() -> None:
-    """Verify create_process_pool returns ProcessPoolExecutor."""
     pool = create_process_pool(max_workers=2)
     try:
         assert isinstance(pool, ProcessPoolExecutor)
@@ -23,7 +19,6 @@ def test_create_process_pool_returns_executor() -> None:
 
 
 def test_create_process_pool_executes_tasks() -> None:
-    """Verify pool can execute tasks."""
     pool = create_process_pool(max_workers=2)
     try:
         results = list(pool.map(_cpu_bound_task, [1, 2, 3, 4]))
@@ -33,7 +28,6 @@ def test_create_process_pool_executes_tasks() -> None:
 
 
 def test_process_pool_context_manager() -> None:
-    """Verify context manager creates and shuts down pool."""
     with process_pool_context(max_workers=2) as pool:
         assert isinstance(pool, ProcessPoolExecutor)
         result = pool.submit(_cpu_bound_task, 5).result()
@@ -41,7 +35,6 @@ def test_process_pool_context_manager() -> None:
 
 
 async def test_process_pool_asyncio_compatibility() -> None:
-    """Verify ProcessPoolExecutor works with asyncio.to_thread."""
     pool = create_process_pool(max_workers=2)
 
     def run_in_pool() -> list[int]:
@@ -55,7 +48,6 @@ async def test_process_pool_asyncio_compatibility() -> None:
 
 
 async def test_process_pool_run_in_executor() -> None:
-    """Verify ProcessPoolExecutor works with loop.run_in_executor."""
     pool = create_process_pool(max_workers=2)
     loop = asyncio.get_running_loop()
 
@@ -68,7 +60,6 @@ async def test_process_pool_run_in_executor() -> None:
 
 @pytest.mark.parametrize("workers", [1, 2, 4])
 def test_create_process_pool_respects_max_workers(workers: int) -> None:
-    """Verify max_workers parameter is respected."""
     pool = create_process_pool(max_workers=workers)
     try:
         assert pool._max_workers == workers  # type: ignore[unresolved-attribute]
