@@ -6,6 +6,7 @@ import pytest
 import soundfile as sf
 
 from e_voice.core.audio import Audio
+from e_voice.core.settings import settings as st
 
 ##### DURATION #####
 
@@ -107,14 +108,14 @@ async def test_audio_resample_upsample() -> None:
 
 async def test_audio_encode_pcm() -> None:
     data = np.zeros(1600, dtype=np.float32)
-    result = Audio.encode(data, Audio.WHISPER_SAMPLE_RATE, "pcm")
+    result = Audio.encode(data, st.stt.sample_rate, "pcm")
     assert len(result) == 3200
 
 
 @pytest.mark.parametrize("fmt", ["wav", "mp3", "flac", "opus", "aac"], ids=["wav", "mp3", "flac", "opus", "aac"])
 async def test_audio_encode_formats(fmt: str) -> None:
     data = np.random.randn(16000).astype(np.float32) * 0.1
-    result = Audio.encode(data, Audio.WHISPER_SAMPLE_RATE, fmt)
+    result = Audio.encode(data, st.stt.sample_rate, fmt)
     assert len(result) > 0
 
 
@@ -123,7 +124,7 @@ async def test_audio_encode_formats(fmt: str) -> None:
 
 async def test_audio_encode_chunk_pcm() -> None:
     data = np.zeros(800, dtype=np.float32)
-    result = Audio.encode_chunk(data, Audio.WHISPER_SAMPLE_RATE, "pcm")
+    result = Audio.encode_chunk(data, st.stt.sample_rate, "pcm")
     assert len(result) == 1600
 
 
@@ -179,8 +180,8 @@ async def test_audio_pcm16_to_float32_custom_sample_rate() -> None:
     assert len(result) == 480
 
 
-##### WHISPER_SAMPLE_RATE #####
+##### STT SAMPLE RATE #####
 
 
-async def test_audio_whisper_sample_rate() -> None:
-    assert Audio.WHISPER_SAMPLE_RATE == 16_000
+async def test_stt_sample_rate_from_settings() -> None:
+    assert st.stt.sample_rate == 16_000

@@ -13,7 +13,8 @@ from scipy.signal import resample_poly
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect as ws_connect
 
-_TARGET_SR = 16_000
+from e_voice.core.settings import settings as st
+
 _SSE_DONE = "[DONE]"
 
 
@@ -184,10 +185,10 @@ class APIClient:
 
 def _resample_16k(y: np.ndarray, sr: int) -> np.ndarray:
     """Resample to 16kHz using polyphase filter."""
-    if sr == _TARGET_SR:
+    if sr == st.stt.sample_rate:
         return y
-    g = gcd(_TARGET_SR, sr)
-    return resample_poly(y, _TARGET_SR // g, sr // g).astype(np.float32)
+    g = gcd(st.stt.sample_rate, sr)
+    return resample_poly(y, st.stt.sample_rate // g, sr // g).astype(np.float32)
 
 
 def _float32_to_b64_pcm16(y: np.ndarray) -> str:

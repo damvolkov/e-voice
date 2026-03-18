@@ -67,7 +67,7 @@ def e_voice_server():
             resp = httpx.get(f"{base_url}/health", timeout=1.0)
             if resp.status_code == 200:
                 break
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.ReadTimeout):
             time.sleep(1)
     else:
         process.terminate()

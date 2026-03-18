@@ -43,7 +43,8 @@ COPY --from=builder --chown=app:app /app/README.md README.md
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
-RUN mkdir -p data/models data/config && chown -R app:app data/
+RUN mkdir -p data/models data/config /defaults && chown -R app:app data/ /defaults
+COPY --chown=app:app data/config/config.yaml /defaults/config.yaml
 COPY --chown=app:app data/config/config.yaml data/config/config.yaml
 COPY --chown=app:app assets/ assets/
 COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh

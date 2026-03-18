@@ -1,12 +1,28 @@
 """Unified settings for e-voice — YAML-based configuration with typed sub-models."""
 
+import importlib.metadata
 import tomllib
+from contextlib import suppress
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import ClassVar
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
+
+##### OPTIONAL DEPENDENCIES #####
+
+_HAS_GIT = False
+with suppress(ImportError):
+    import git
+
+    _HAS_GIT = True
+
+_HAS_CT2 = False
+with suppress(ImportError):
+    import ctranslate2
+
+    _HAS_CT2 = True
 
 ##### HELPERS #####
 
@@ -19,19 +35,14 @@ def read_pyproject(pyproject_path: Path) -> dict:
 
 def get_version(base_dir: Path) -> str:
     """Get version from git tags or fallback to package metadata."""
-    try:
-        import git
-
-        repo = git.Repo(base_dir, search_parent_directories=True)
-        latest_tag = max(repo.tags, key=lambda t: t.commit.committed_datetime, default=None)
-        return str(latest_tag) if latest_tag else "0.0.0"
-    except Exception:
-        try:
-            import importlib.metadata
-
-            return importlib.metadata.version("e-voice")
-        except Exception:
-            return "0.0.0"
+    if _HAS_GIT:
+        with suppress(Exception):
+            repo = git.Repo(base_dir, search_parent_directories=True)
+            if latest_tag := max(repo.tags, key=lambda t: t.commit.committed_datetime, default=None):
+                return str(latest_tag)
+    with suppress(Exception):
+        return importlib.metadata.version("e-voice")
+    return "0.0.0"
 
 
 ##### TYPE ALIASES #####
@@ -81,13 +92,10 @@ def resolve_compute_type(device: DeviceType, compute_type: ComputeType) -> Compu
         return _GPU_COMPUTE
     if device == DeviceType.CPU:
         return _CPU_COMPUTE
-    try:
-        import ctranslate2
-
-        if "cuda" in ctranslate2.get_supported_compute_types("cuda"):
-            return _GPU_COMPUTE
-    except Exception:
-        pass
+    if _HAS_CT2:
+        with suppress(Exception):
+            if "cuda" in ctranslate2.get_supported_compute_types("cuda"):
+                return _GPU_COMPUTE
     return _CPU_COMPUTE
 
 
@@ -115,6 +123,7 @@ class STTConfig(BaseModel):
     num_workers: int = Field(default=1, ge=1)
     default_language: str | None = None
     default_response_format: ResponseFormatType = ResponseFormatType.JSON
+    sample_rate: int = Field(default=16_000, ge=8000, le=48000)
     cpu_fallback: bool = True
     hf_allow_patterns: list[str] = Field(
         default=["config.json", "model.bin", "tokenizer.json", "vocabulary.*", "preprocessor_config.json"],
@@ -125,6 +134,7 @@ class TTSConfig(BaseModel):
     """Text-to-Speech (Kokoro-ONNX) settings."""
 
     device: DeviceType = DeviceType.CUDA
+    sample_rate: int = Field(default=24_000, ge=8000, le=48000)
     default_voice: str = "af_heart"
     default_speed: float = Field(default=1.0, ge=0.1, le=5.0)
     model_filename: str = "kokoro-v1.0.onnx"

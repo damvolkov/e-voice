@@ -1,7 +1,10 @@
 import numpy as np
 import pytest
 
-from e_voice.streaming.audio import SAMPLE_RATE, AudioBuffer
+from e_voice.core.settings import settings as st
+from e_voice.streaming.audio import AudioBuffer
+
+SAMPLE_RATE = st.stt.sample_rate
 
 
 def _seconds_of_audio(seconds: float, rate: int = SAMPLE_RATE) -> np.ndarray:

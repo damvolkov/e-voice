@@ -316,7 +316,7 @@ services:
       - "${EVOICE_PORT:-5500}:80"
     volumes:
       - models:/app/data/models
-      - ./config/evoice/config.yaml:/app/data/config/config.yaml:ro
+      - ./config/evoice:/app/data/config:ro
     environment:
       - LOG_LEVEL=info
     healthcheck:
@@ -338,10 +338,15 @@ networks:
 ```
 
 ```bash
+# Create config directory with your settings
+mkdir -p config/evoice
+cp data/config/config.yaml config/evoice/config.yaml
+# Edit config/evoice/config.yaml as needed
+
 docker compose -f compose.prod.yml up -d
 ```
 
-Models are downloaded automatically on first startup and persisted in the `models` volume.
+Models are downloaded automatically on first startup and persisted in the `models` volume. If `config/evoice/` is empty or missing the `config.yaml`, the image uses its built-in defaults.
 
 ## Data Layout
 

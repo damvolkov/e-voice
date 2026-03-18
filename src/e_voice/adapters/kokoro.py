@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 import numpy as np
+import onnxruntime as ort
 from kokoro_onnx import Kokoro
 from numpy.typing import NDArray
 
@@ -17,16 +18,12 @@ from e_voice.models.tts import OnnxProvider, SynthesisParams, TTSModelSpec
 
 type AudioChunk = tuple[NDArray[np.float32], int]
 
-SAMPLE_RATE = 24_000
-
 
 # ── Pure Helpers ───────────────────────────────────────────────────────
 
 
 def _resolve_provider(device: str) -> OnnxProvider:
     """Resolve ONNX provider with fallback to CPU."""
-    import onnxruntime as ort
-
     desired = OnnxProvider.CUDA if device == "cuda" else OnnxProvider.CPU
 
     if desired in ort.get_available_providers():

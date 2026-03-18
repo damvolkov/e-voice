@@ -3,7 +3,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-SAMPLE_RATE = 16_000
+from e_voice.core.settings import settings as st
 
 
 class AudioBuffer:
@@ -19,7 +19,7 @@ class AudioBuffer:
         self,
         max_duration_s: float = 45.0,
         trim_duration_s: float = 30.0,
-        sample_rate: int = SAMPLE_RATE,
+        sample_rate: int = st.stt.sample_rate,
     ) -> None:
         self._data: NDArray[np.float32] = np.array([], dtype=np.float32)
         self._offset: float = 0.0

@@ -19,7 +19,7 @@ services:
       - "${EVOICE_PORT:-5500}:80"
     volumes:
       - models:/app/data/models
-      - ./config/evoice/config.yaml:/app/data/config/config.yaml:ro
+      - ./config/evoice:/app/data/config:ro
     environment:
       - LOG_LEVEL=info
     healthcheck:

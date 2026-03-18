@@ -10,11 +10,11 @@ import soundfile as sf
 from numpy.typing import NDArray
 from scipy.signal import resample_poly
 
+from e_voice.core.settings import settings as st
+
 
 class Audio:
     """Codec, resampling, and encoding operations for audio data."""
-
-    WHISPER_SAMPLE_RATE: ClassVar[int] = 16_000
 
     _CODEC_MAP: ClassVar[dict[str, tuple[str, str, dict]]] = {
         "mp3": ("mp3", "mp3", {"audio_bitrate": "128k"}),
@@ -27,7 +27,7 @@ class Audio:
     ##### DECODING #####
 
     @staticmethod
-    def samples_from_file(file_bytes: bytes, target_sample_rate: int = 16_000) -> NDArray[np.float32]:
+    def samples_from_file(file_bytes: bytes, target_sample_rate: int = st.stt.sample_rate) -> NDArray[np.float32]:
         """Decode audio file bytes to float32 mono at target sample rate."""
         data, sample_rate = sf.read(BytesIO(file_bytes), dtype="float32", always_2d=True)
         data = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
@@ -36,7 +36,7 @@ class Audio:
         return data.astype(np.float32)
 
     @staticmethod
-    def pcm16_to_float32(raw: bytes, sample_rate: int = 16_000) -> NDArray[np.float32]:
+    def pcm16_to_float32(raw: bytes, sample_rate: int = st.stt.sample_rate) -> NDArray[np.float32]:
         """Decode raw PCM16-LE bytes to float32 samples."""
         audio, _ = sf.read(
             BytesIO(raw),
@@ -111,7 +111,7 @@ class Audio:
     ##### METRICS #####
 
     @staticmethod
-    def duration(data: NDArray[np.float32], sample_rate: int = 16_000) -> float:
+    def duration(data: NDArray[np.float32], sample_rate: int = st.stt.sample_rate) -> float:
         """Duration in seconds."""
         return len(data) / sample_rate
 
