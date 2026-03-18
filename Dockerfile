@@ -43,7 +43,7 @@ COPY --from=builder --chown=app:app /app/README.md README.md
 
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
-RUN mkdir -p data/models data/config /defaults && chown -R app:app data/ /defaults
+RUN mkdir -p data/models data/config /defaults .cache/huggingface && chown -R app:app data/ /defaults .cache/
 COPY --chown=app:app data/config/config.yaml /defaults/config.yaml
 COPY --chown=app:app data/config/config.yaml data/config/config.yaml
 COPY --chown=app:app assets/ assets/
@@ -56,7 +56,9 @@ USER 1000
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HOME="/app/.cache/huggingface" \
+    HF_HUB_DISABLE_XET=1
 
 EXPOSE 80
 
