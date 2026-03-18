@@ -18,8 +18,22 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def _preload_nvidia_libs() -> None:
+    """Preload NVIDIA CUDA shared libs from venv via ctypes (dlopen with full path)."""
+    import ctypes
+    from contextlib import suppress
+    from pathlib import Path
+
+    venv = Path(__file__).resolve().parents[2] / ".venv" / "lib"
+    for so in venv.glob("python*/site-packages/nvidia/*/lib/*.so.*"):
+        with suppress(OSError):
+            ctypes.CDLL(str(so))
+
+
 def _run_server(port: int) -> None:
     """Start e-voice on the given port. Runs in a subprocess."""
+    _preload_nvidia_libs()
+
     from e_voice.core.settings import settings as st
 
     st.system.port = port

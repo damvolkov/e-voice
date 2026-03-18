@@ -1,5 +1,8 @@
 """OpenAI-compatible Text-to-Speech API — speech synthesis, voice listing."""
 
+import asyncio
+from collections.abc import Generator
+
 from robyn import Headers, Request, Response, SSEMessage, SSEResponse, StreamingResponse, status_codes
 
 from e_voice.adapters.kokoro import _VOICE_LANG_MAP, KokoroAdapter
@@ -55,15 +58,22 @@ async def speech(request: Request, body: SpeechRequest, global_dependencies):
         return SSEResponse(sse_generator())
 
     if body.stream:
+        loop = asyncio.get_running_loop()
+        async_gen = kokoro.synthesize_stream(
+            body.input,
+            voice=body.voice,
+            speed=body.speed,
+            lang=body.lang,
+        )
 
-        async def audio_generator():
-            async for samples, sr in kokoro.synthesize_stream(
-                body.input,
-                voice=body.voice,
-                speed=body.speed,
-                lang=body.lang,
-            ):
-                yield Audio.encode_chunk(samples, sr, fmt)
+        def audio_generator() -> Generator[str, None, None]:
+            while True:
+                try:
+                    future = asyncio.run_coroutine_threadsafe(async_gen.__anext__(), loop)
+                    samples, sr = future.result(timeout=60)
+                    yield Audio.encode_chunk(samples, sr, fmt).decode("latin-1")
+                except StopAsyncIteration:
+                    break
 
         headers = Headers({"Content-Type": content_type})
         return StreamingResponse(

@@ -1,3 +1,5 @@
+from contextlib import suppress
+
 import httpx
 import pytest
 
@@ -33,6 +35,8 @@ def api_ps_url(base_url: str) -> str:
 
 
 @pytest.fixture(scope="session")
-async def stt_client(base_url: str) -> httpx.AsyncClient:
-    async with httpx.AsyncClient(base_url=base_url, timeout=60.0) as client:
-        yield client
+async def stt_client(base_url: str):
+    client = httpx.AsyncClient(base_url=base_url, timeout=60.0)
+    yield client
+    with suppress(RuntimeError):
+        await client.aclose()

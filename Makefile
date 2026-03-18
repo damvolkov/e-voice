@@ -137,15 +137,15 @@ TTS_VOICE ?= af_heart
 TTS_FMT ?= pcm
 
 tts:
-	@command -v aplay >/dev/null 2>&1 || { echo "$(RED)aplay not found. Install: sudo apt-get install alsa-utils$(RESET)"; exit 1; }
+	@command -v ffplay >/dev/null 2>&1 || { echo "$(RED)ffplay not found. Install: sudo apt-get install ffmpeg$(RESET)"; exit 1; }
 	@echo "$(CYAN)=== TTS: http://localhost:$(SERVICE_PORT)/v1/audio/speech voice=$(TTS_VOICE) ===$(RESET)"
 	@echo "$(YELLOW)Type text + Enter to speak. Ctrl+C to stop.$(RESET)"
 	@while IFS= read -r line; do \
 		[ -z "$$line" ] && continue; \
-		curl -sN http://localhost:$(SERVICE_PORT)/v1/audio/speech \
+		curl -s http://localhost:$(SERVICE_PORT)/v1/audio/speech \
 			-H 'Content-Type: application/json' \
-			-d "{\"input\":\"$$line\",\"voice\":\"$(TTS_VOICE)\",\"response_format\":\"$(TTS_FMT)\",\"stream\":true}" \
-			| aplay -f S16_LE -r 24000 -c 1 -t raw -q 2>/dev/null; \
+			-d "{\"input\":\"$$line\",\"voice\":\"$(TTS_VOICE)\",\"response_format\":\"$(TTS_FMT)\",\"stream\":false}" \
+			| ffplay -f s16le -ar 24000 -ac 1 -nodisp -autoexit -loglevel quiet -; \
 	done
 
 
