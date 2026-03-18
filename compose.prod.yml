@@ -1,0 +1,40 @@
+services:
+  evoice:
+    image: ghcr.io/damvolkov/e-voice:latest
+    container_name: evoice
+    hostname: evoice
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    labels:
+      e-core.category: "audio"
+      e-core.port: "5500"
+    ports:
+      # 5500 — e-voice STT + TTS Server (ai)
+      - "${EVOICE_PORT:-5500}:80"
+    volumes:
+      - models:/app/data/models
+      - ./config/evoice/config.yaml:/app/data/config/config.yaml:ro
+    environment:
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - e-core
+
+volumes:
+  models:
+    driver: local
+
+networks:
+  e-core:
+    external: true
