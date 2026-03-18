@@ -7,13 +7,14 @@ Suffixes: _http, _sse, _stream, _ws match the taxonomical endpoint aliases.
 
 import base64
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
 
 import numpy as np
 import orjson
 import pytest
+from faster_whisper.transcribe import Segment, TranscriptionInfo
 from robyn import Headers, Response, SSEMessage, SSEResponse, StreamingResponse
 
+from e_voice.adapters.whisper import build_response, format_segment
 from e_voice.core.audio import Audio
 from e_voice.core.router import parse_response
 
@@ -22,30 +23,36 @@ from e_voice.core.router import parse_response
 _FAKE_AUDIO_F32 = np.zeros(24_000, dtype=np.float32)
 
 
-@dataclass(frozen=True, slots=True)
-class FakeSegment:
-    id: int = 0
-    seek: int = 0
-    start: float = 0.0
-    end: float = 1.0
-    text: str = " Hello world."
-    tokens: tuple[int, ...] = (1, 2, 3)
-    temperature: float = 0.0
-    avg_logprob: float = -0.5
-    compression_ratio: float = 1.0
-    no_speech_prob: float = 0.01
-    words: tuple = ()
+def _segment(
+    text: str = " Hello world.",
+    start: float = 0.0,
+    end: float = 1.0,
+) -> Segment:
+    return Segment(
+        id=0,
+        seek=0,
+        start=start,
+        end=end,
+        text=text,
+        tokens=(1, 2, 3),
+        avg_logprob=-0.5,
+        compression_ratio=1.0,
+        no_speech_prob=0.01,
+        words=None,
+        temperature=0.0,
+    )
 
 
-@dataclass(frozen=True, slots=True)
-class FakeTranscriptionInfo:
-    language: str = "en"
-    language_probability: float = 0.99
-    duration: float = 1.0
-    duration_after_vad: float = 1.0
-    all_language_probs: tuple = ()
-    transcription_options: None = None
-    vad_options: None = None
+def _info(language: str = "en") -> TranscriptionInfo:
+    return TranscriptionInfo(
+        language=language,
+        language_probability=0.99,
+        duration=1.0,
+        duration_after_vad=1.0,
+        all_language_probs=None,
+        transcription_options=None,
+        vad_options=None,
+    )
 
 
 ##### ROUTER — TRANSPORT TYPE DISPATCH #####
@@ -103,30 +110,19 @@ async def test_parse_response_type_dispatch(input_val, expected_type) -> None:
 
 
 async def test_stt_http_text_format() -> None:
-    from e_voice.adapters.whisper import WhisperAdapter
-
-    text = WhisperAdapter.segments_to_text([FakeSegment(text=" Hello world.")])
-    assert text == "Hello world."
+    body, ct = build_response([_segment()], _info(), np.zeros(16000, dtype=np.float32), "text")
+    assert ct == "text/plain"
+    assert body == "Hello world."
 
 
 async def test_stt_http_json_format() -> None:
-    from e_voice.adapters.whisper import WhisperAdapter
-    from e_voice.models.transcription import ResponseFormat
-
-    body, ct = WhisperAdapter.build_response(
-        [FakeSegment()], FakeTranscriptionInfo(), np.zeros(16000, dtype=np.float32), ResponseFormat.JSON
-    )
+    body, ct = build_response([_segment()], _info(), np.zeros(16000, dtype=np.float32), "json")
     assert ct == "application/json"
     assert orjson.loads(body)["text"] == "Hello world."
 
 
 async def test_stt_http_verbose_json_format() -> None:
-    from e_voice.adapters.whisper import WhisperAdapter
-    from e_voice.models.transcription import ResponseFormat
-
-    body, ct = WhisperAdapter.build_response(
-        [FakeSegment()], FakeTranscriptionInfo(), np.zeros(16000, dtype=np.float32), ResponseFormat.VERBOSE_JSON
-    )
+    body, ct = build_response([_segment()], _info(), np.zeros(16000, dtype=np.float32), "verbose_json")
     assert ct == "application/json"
     parsed = orjson.loads(body)
     assert "segments" in parsed
@@ -136,14 +132,11 @@ async def test_stt_http_verbose_json_format() -> None:
 
 @pytest.mark.parametrize("fmt", ["srt", "vtt"], ids=["srt", "vtt"])
 async def test_stt_http_subtitle_formats(fmt: str) -> None:
-    from e_voice.adapters.whisper import WhisperAdapter
-    from e_voice.models.transcription import ResponseFormat
-
-    body, ct = WhisperAdapter.build_response(
-        [FakeSegment(text=" Hello.", start=0.0, end=1.0)],
-        FakeTranscriptionInfo(),
+    body, ct = build_response(
+        [_segment(text=" Hello.", start=0.0, end=1.0)],
+        _info(),
         np.zeros(16000, dtype=np.float32),
-        ResponseFormat(fmt),
+        fmt,
     )
     assert ct == "text/plain"
     assert "-->" in body
@@ -171,10 +164,7 @@ async def test_stt_sse_message_with_event_type() -> None:
 
 
 async def test_stt_sse_segment_message() -> None:
-    from e_voice.adapters.whisper import WhisperAdapter
-    from e_voice.models.transcription import ResponseFormat
-
-    msg = SSEMessage(data=WhisperAdapter.format_segment_for_streaming(FakeSegment(), ResponseFormat.TEXT))
+    msg = SSEMessage(data=format_segment(_segment(), "text"))
     assert "data:" in msg
     assert "Hello world." in msg
 

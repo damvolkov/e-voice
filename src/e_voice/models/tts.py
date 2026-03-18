@@ -1,9 +1,69 @@
-"""Pydantic models for Text-to-Speech API — OpenAI-compatible."""
+"""Pydantic models and value objects for Text-to-Speech API."""
 
+from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from e_voice.core.settings import DeviceType
+
+##### ADAPTER ENUMS #####
+
+
+class OnnxProvider(StrEnum):
+    """ONNX execution provider identifiers."""
+
+    CUDA = "CUDAExecutionProvider"
+    CPU = "CPUExecutionProvider"
+
+
+class VoiceLang(StrEnum):
+    """Voice prefix → BCP-47 language code."""
+
+    A = "en-us"
+    B = "en-gb"
+    E = "es"
+    F = "fr"
+    H = "hi"
+    I = "it"  # noqa: E741
+    J = "ja"
+    P = "pt-br"
+    Z = "zh"
+
+
+##### ADAPTER VALUE OBJECTS #####
+
+
+@dataclass(frozen=True, slots=True)
+class TTSModelSpec:
+    """Identity of a loaded TTS model+device pair."""
+
+    model_id: str = "kokoro"
+    device: DeviceType = DeviceType.CPU
+
+
+@dataclass(frozen=True, slots=True)
+class SynthesisParams:
+    """Unified synthesis params."""
+
+    voice: str = "af_heart"
+    speed: float = 1.0
+    lang: str | None = None
+
+    @property
+    def resolved_lang(self) -> str:
+        """Infer language from voice prefix if not explicitly set. O(1)."""
+        if self.lang:
+            return self.lang
+        prefix = self.voice[0].upper() if self.voice else "A"
+        try:
+            return VoiceLang[prefix]
+        except KeyError:
+            return VoiceLang.A
+
+
+##### API ENUMS #####
 
 
 class SpeechResponseFormat(StrEnum):

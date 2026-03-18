@@ -115,6 +115,10 @@ class STTConfig(BaseModel):
     num_workers: int = Field(default=1, ge=1)
     default_language: str | None = None
     default_response_format: ResponseFormatType = ResponseFormatType.JSON
+    cpu_fallback: bool = True
+    hf_allow_patterns: list[str] = Field(
+        default=["config.json", "model.bin", "tokenizer.json", "vocabulary.*", "preprocessor_config.json"],
+    )
 
 
 class TTSConfig(BaseModel):
@@ -123,6 +127,10 @@ class TTSConfig(BaseModel):
     device: DeviceType = DeviceType.CUDA
     default_voice: str = "af_heart"
     default_speed: float = Field(default=1.0, ge=0.1, le=5.0)
+    model_filename: str = "kokoro-v1.0.onnx"
+    voices_filename: str = "voices-v1.0.bin"
+    release_url: str = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+    download_chunk_size: int = Field(default=65_536, ge=4096)
 
 
 class VADConfig(BaseModel):

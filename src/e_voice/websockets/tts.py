@@ -7,6 +7,7 @@ from e_voice.adapters.kokoro import KokoroAdapter
 from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.websocket import BaseWebSocket
+from e_voice.models.tts import SynthesisParams
 
 ws_tts = BaseWebSocket("/v1/audio/speech")
 ws_tts_alias = BaseWebSocket("/v1/tts/ws")
@@ -34,13 +35,15 @@ async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> s
         return orjson.dumps({"error": "Empty input"}).decode()
 
     kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
-    voice = payload.get("voice", "af_heart")
-    speed = float(payload.get("speed", 1.0))
-    lang = payload.get("lang")
+    params = SynthesisParams(
+        voice=payload.get("voice", "af_heart"),
+        speed=float(payload.get("speed", 1.0)),
+        lang=payload.get("lang"),
+    )
 
-    logger.info("speech request", step="WS", client=ws.id, voice=voice, text_len=len(text))
+    logger.info("speech request", step="WS", client=ws.id, voice=params.voice, text_len=len(text))
 
-    async for samples, _sr in kokoro.synthesize_stream(text, voice=voice, speed=speed, lang=lang):
+    async for samples, _sr in kokoro.synthesize_stream(text, params=params):
         chunk = orjson.dumps(
             {
                 "type": "speech.audio.delta",

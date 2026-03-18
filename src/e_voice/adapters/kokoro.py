@@ -7,158 +7,163 @@ from pathlib import Path
 
 import httpx
 import numpy as np
-import onnxruntime as ort
 from kokoro_onnx import Kokoro
 from numpy.typing import NDArray
 
 from e_voice.adapters.base import BaseModelAdapter
 from e_voice.core.logger import logger
-from e_voice.core.settings import DeviceType
 from e_voice.core.settings import settings as st
+from e_voice.models.tts import OnnxProvider, SynthesisParams, TTSModelSpec
 
-_ONNX_PROVIDERS: dict[DeviceType, str] = {
-    DeviceType.CUDA: "CUDAExecutionProvider",
-    DeviceType.CPU: "CPUExecutionProvider",
-}
+type AudioChunk = tuple[NDArray[np.float32], int]
 
-KOKORO_SAMPLE_RATE = 24_000
-
-_MODEL_FILENAME = "kokoro-v1.0.onnx"
-_VOICES_FILENAME = "voices-v1.0.bin"
-_RELEASE_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
-
-##### LANGUAGE MAP #####
-
-_VOICE_LANG_MAP: dict[str, str] = {
-    "a": "en-us",
-    "b": "en-gb",
-    "j": "ja",
-    "z": "zh",
-    "e": "es",
-    "f": "fr",
-    "h": "hi",
-    "i": "it",
-    "p": "pt-br",
-}
+SAMPLE_RATE = 24_000
 
 
-def _resolve_lang(voice: str, lang: str | None) -> str:
-    """Infer language from voice prefix if not explicitly provided."""
-    if lang:
-        return lang
-    prefix = voice[0] if voice else "a"
-    return _VOICE_LANG_MAP.get(prefix, "en-us")
+# ── Pure Helpers ───────────────────────────────────────────────────────
 
 
-class KokoroAdapter(BaseModelAdapter):
-    """Manages Kokoro-ONNX TTS model lifecycle and synthesis."""
+def _resolve_provider(device: str) -> OnnxProvider:
+    """Resolve ONNX provider with fallback to CPU."""
+    import onnxruntime as ort
 
-    __slots__ = ("_kokoro", "_model_dir")
+    desired = OnnxProvider.CUDA if device == "cuda" else OnnxProvider.CPU
 
-    def __init__(self, model_dir: Path | None = None) -> None:
-        self._kokoro: Kokoro | None = None
-        self._model_dir = model_dir or st.MODELS_PATH / "tts"
+    if desired in ort.get_available_providers():
+        return desired
 
-    ##### MODEL LIFECYCLE #####
+    logger.warning("⚠️ PROVIDER_FALLBACK", extra={"desired": desired, "actual": OnnxProvider.CPU})
+    return OnnxProvider.CPU
 
-    async def load(self, model_id: str = "kokoro") -> None:
-        """Download (if needed) and load Kokoro model."""
-        if self._kokoro is not None:
+
+# ── Adapter ────────────────────────────────────────────────────────────
+
+
+class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
+    """Manages Kokoro-ONNX TTS model registry and synthesis."""
+
+    __slots__ = ("_models", "_voices")
+
+    def __init__(self) -> None:
+        self._models: dict[TTSModelSpec, Kokoro] = {}
+        self._voices: list[str] = []
+
+    # ── Properties ─────────────────────────────────────────────────────
+
+    @property
+    def voices(self) -> list[str]:
+        """Available voice IDs (cached after first model load)."""
+        return self._voices
+
+    @property
+    def loaded(self) -> list[TTSModelSpec]:
+        """Currently loaded model specs."""
+        return list(self._models)
+
+    # ── Model Lifecycle ────────────────────────────────────────────────
+
+    async def load(self, spec: TTSModelSpec | None = None) -> None:
+        """Download (if needed) and load Kokoro model. Idempotent."""
+        target = spec or TTSModelSpec(device=st.tts.device)
+        if target in self._models:
             return
 
-        self._model_dir.mkdir(parents=True, exist_ok=True)
-        model_path = self._model_dir / _MODEL_FILENAME
-        voices_path = self._model_dir / _VOICES_FILENAME
+        model_dir = st.MODELS_PATH / "tts"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        model_path = model_dir / st.tts.model_filename
+        voices_path = model_dir / st.tts.voices_filename
 
         if not model_path.exists() or not voices_path.exists():
-            await self._lc_download_files(model_path, voices_path)
+            await self._download(model_path, voices_path)
 
-        available = ort.get_available_providers()
-        desired = _ONNX_PROVIDERS.get(st.tts.device, "CPUExecutionProvider")
-        provider = desired if desired in available else "CPUExecutionProvider"
+        provider = _resolve_provider(target.device.value)
         os.environ["ONNX_PROVIDER"] = provider
 
-        logger.info("loading kokoro model", step="MODEL", path=str(self._model_dir), provider=provider)
-        self._kokoro = await asyncio.to_thread(Kokoro, str(model_path), str(voices_path))
-        logger.info("kokoro model loaded", step="MODEL")
+        logger.info("🔄 MODEL_LOADING", extra={"model": target.model_id, "provider": provider.value})
+        kokoro = await asyncio.to_thread(Kokoro, str(model_path), str(voices_path))
+        self._models[target] = kokoro
+        if not self._voices:
+            self._voices = kokoro.get_voices()
+        logger.info("✅ MODEL_LOADED", extra={"model": target.model_id, "provider": provider.value})
 
-    async def unload(self, model_id: str = "kokoro") -> bool:
-        if self._kokoro is not None:
-            self._kokoro = None
-            logger.info("kokoro model unloaded", step="MODEL")
+    async def unload(self, spec: TTSModelSpec | None = None) -> bool:
+        """Unload model from memory."""
+        target = spec or TTSModelSpec(device=st.tts.device)
+        if (model := self._models.pop(target, None)) is not None:
+            del model
+            logger.info("🗑️ MODEL_UNLOADED", extra={"model": target.model_id})
             return True
         return False
 
-    async def is_loaded(self, model_id: str = "kokoro") -> bool:
-        return self._kokoro is not None
+    async def is_loaded(self, spec: TTSModelSpec | None = None) -> bool:
+        target = spec or TTSModelSpec(device=st.tts.device)
+        return target in self._models
 
-    def loaded_models(self) -> list[str]:
-        return ["kokoro"] if self._kokoro is not None else []
+    def loaded_models(self) -> list[TTSModelSpec]:
+        return list(self._models)
 
     async def download(self, model_id: str = "kokoro") -> Path:
         """Download Kokoro model files to disk. Returns model directory."""
-        self._model_dir.mkdir(parents=True, exist_ok=True)
-        model_path = self._model_dir / _MODEL_FILENAME
-        voices_path = self._model_dir / _VOICES_FILENAME
-        await self._lc_download_files(model_path, voices_path)
-        return self._model_dir
+        model_dir = st.MODELS_PATH / "tts"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        await self._download(model_dir / st.tts.model_filename, model_dir / st.tts.voices_filename)
+        return model_dir
 
-    async def _lc_download_files(self, model_path: Path, voices_path: Path) -> None:
-        """Download model + voices from GitHub releases."""
-        logger.info("downloading kokoro files", step="DOWNLOAD", source=_RELEASE_BASE)
-
-        async with httpx.AsyncClient(follow_redirects=True, timeout=600.0) as client:
-            for filename, dest in ((_MODEL_FILENAME, model_path), (_VOICES_FILENAME, voices_path)):
-                if dest.exists():
-                    continue
-                url = f"{_RELEASE_BASE}/{filename}"
-                logger.info("downloading", step="DOWNLOAD", file=filename)
-                async with client.stream("GET", url) as resp:
-                    resp.raise_for_status()
-                    with dest.open("wb") as f:
-                        async for chunk in resp.aiter_bytes(chunk_size=65536):
-                            f.write(chunk)
-
-        logger.info("kokoro files downloaded", step="DOWNLOAD")
-
-    def _lc_resolve(self) -> Kokoro:
-        """Return loaded model or raise."""
-        if self._kokoro is None:
-            raise RuntimeError("Kokoro model not loaded. Call load() first.")
-        return self._kokoro
-
-    ##### SYNTHESIS #####
+    # ── Batch Synthesis ────────────────────────────────────────────────
 
     async def synthesize(
         self,
         text: str,
         *,
-        voice: str = "af_heart",
-        speed: float = 1.0,
-        lang: str | None = None,
-    ) -> tuple[NDArray[np.float32], int]:
-        """Synthesize full audio. Returns (samples, sample_rate)."""
-        kokoro = self._lc_resolve()
-        resolved_lang = _resolve_lang(voice, lang)
-        return await asyncio.to_thread(kokoro.create, text, voice, speed, resolved_lang)
+        spec: TTSModelSpec | None = None,
+        params: SynthesisParams | None = None,
+    ) -> AudioChunk:
+        """Full synthesis — returns (samples, sample_rate)."""
+        kokoro = self._resolve(spec)
+        p = params or SynthesisParams()
+        return await asyncio.to_thread(kokoro.create, text, p.voice, p.speed, p.resolved_lang)
+
+    # ── Streaming Synthesis ────────────────────────────────────────────
 
     async def synthesize_stream(
         self,
         text: str,
         *,
-        voice: str = "af_heart",
-        speed: float = 1.0,
-        lang: str | None = None,
-    ) -> AsyncGenerator[tuple[NDArray[np.float32], int]]:
-        """Yield audio chunks as they are generated."""
-        kokoro = self._lc_resolve()
-        resolved_lang = _resolve_lang(voice, lang)
-        async for chunk in kokoro.create_stream(text, voice, speed, resolved_lang):
+        spec: TTSModelSpec | None = None,
+        params: SynthesisParams | None = None,
+    ) -> AsyncGenerator[AudioChunk]:
+        """Yield audio chunks as generated — true streaming."""
+        kokoro = self._resolve(spec)
+        p = params or SynthesisParams()
+        async for chunk in kokoro.create_stream(text, p.voice, p.speed, p.resolved_lang):
             yield chunk
 
-    ##### VOICES #####
+    # ── Private ────────────────────────────────────────────────────────
 
-    def get_voices(self) -> list[str]:
-        """Return available voice IDs."""
-        kokoro = self._lc_resolve()
-        return kokoro.get_voices()
+    def _resolve(self, spec: TTSModelSpec | None = None) -> Kokoro:
+        """Resolve spec → loaded Kokoro instance."""
+        target = spec or TTSModelSpec(device=st.tts.device)
+        if target not in self._models:
+            raise RuntimeError(f"Model {target!r} not loaded. Call load() first.")
+        return self._models[target]
+
+    @staticmethod
+    async def _download(model_path: Path, voices_path: Path) -> None:
+        """Download model + voices from GitHub releases."""
+        base_url = st.tts.release_url
+        chunk_size = st.tts.download_chunk_size
+        logger.info("⬇️ FILES_DOWNLOADING", extra={"source": base_url})
+
+        async with httpx.AsyncClient(follow_redirects=True, timeout=600.0) as client:
+            for filename, dest in ((st.tts.model_filename, model_path), (st.tts.voices_filename, voices_path)):
+                if dest.exists():
+                    continue
+                url = f"{base_url}/{filename}"
+                logger.info("⬇️ FILE_DOWNLOADING", extra={"file": filename})
+                async with client.stream("GET", url) as resp:
+                    resp.raise_for_status()
+                    with dest.open("wb") as f:
+                        async for chunk in resp.aiter_bytes(chunk_size=chunk_size):
+                            f.write(chunk)
+
+        logger.info("✅ FILES_DOWNLOADED", extra={"path": str(model_path.parent)})

@@ -1,14 +1,13 @@
-"""Unit tests for adapters/kokoro.py — device config, language resolution, lifecycle."""
-
-from unittest.mock import MagicMock, patch
+"""Unit tests for KokoroAdapter — lifecycle, synthesis, voice resolution."""
 
 import numpy as np
 import pytest
 
-from e_voice.adapters.kokoro import _ONNX_PROVIDERS, KokoroAdapter, _resolve_lang
+from e_voice.adapters.kokoro import KokoroAdapter, _resolve_provider
 from e_voice.core.settings import DeviceType
+from e_voice.models.tts import OnnxProvider, SynthesisParams, TTSModelSpec
 
-##### LANGUAGE RESOLUTION #####
+##### VOICE LANG RESOLUTION #####
 
 
 @pytest.mark.parametrize(
@@ -23,31 +22,52 @@ from e_voice.core.settings import DeviceType
     ],
     ids=["en-us-prefix", "en-gb-prefix", "es-prefix", "ja-prefix", "explicit-fr", "explicit-de"],
 )
-async def test_resolve_lang(voice: str, lang: str | None, expected: str) -> None:
-    assert _resolve_lang(voice, lang) == expected
+async def test_synthesis_params_resolved_lang(voice: str, lang: str | None, expected: str) -> None:
+    assert SynthesisParams(voice=voice, lang=lang).resolved_lang == expected
 
 
-async def test_resolve_lang_unknown_prefix() -> None:
-    assert _resolve_lang("xf_unknown", None) == "en-us"
+async def test_synthesis_params_unknown_prefix_defaults_en_us() -> None:
+    assert SynthesisParams(voice="xf_unknown").resolved_lang == "en-us"
 
 
-async def test_resolve_lang_empty_voice() -> None:
-    assert _resolve_lang("", None) == "en-us"
+async def test_synthesis_params_empty_voice_defaults_en_us() -> None:
+    assert SynthesisParams(voice="").resolved_lang == "en-us"
 
 
-##### ONNX PROVIDER MAPPING #####
+##### ONNX PROVIDER RESOLUTION #####
 
 
-async def test_onnx_provider_cuda() -> None:
-    assert _ONNX_PROVIDERS[DeviceType.CUDA] == "CUDAExecutionProvider"
+async def test_resolve_provider_cuda(mocker) -> None:
+    mocker.patch("onnxruntime.get_available_providers", return_value=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    assert _resolve_provider("cuda") == OnnxProvider.CUDA
 
 
-async def test_onnx_provider_cpu() -> None:
-    assert _ONNX_PROVIDERS[DeviceType.CPU] == "CPUExecutionProvider"
+async def test_resolve_provider_cpu(mocker) -> None:
+    mocker.patch("onnxruntime.get_available_providers", return_value=["CPUExecutionProvider"])
+    assert _resolve_provider("cpu") == OnnxProvider.CPU
 
 
-async def test_onnx_provider_auto_not_mapped() -> None:
-    assert DeviceType.AUTO not in _ONNX_PROVIDERS
+async def test_resolve_provider_cuda_fallback_to_cpu(mocker) -> None:
+    mocker.patch("onnxruntime.get_available_providers", return_value=["CPUExecutionProvider"])
+    assert _resolve_provider("cuda") == OnnxProvider.CPU
+
+
+##### MODEL SPEC #####
+
+
+async def test_tts_model_spec_defaults() -> None:
+    spec = TTSModelSpec()
+    assert spec.model_id == "kokoro"
+    assert spec.device == DeviceType.CPU
+
+
+async def test_tts_model_spec_hashable() -> None:
+    specs = {
+        TTSModelSpec(device=DeviceType.CUDA),
+        TTSModelSpec(device=DeviceType.CPU),
+        TTSModelSpec(device=DeviceType.CUDA),
+    }
+    assert len(specs) == 2
 
 
 ##### ADAPTER LIFECYCLE #####
@@ -55,7 +75,7 @@ async def test_onnx_provider_auto_not_mapped() -> None:
 
 async def test_adapter_init() -> None:
     adapter = KokoroAdapter()
-    assert adapter.loaded_models() == []
+    assert adapter.loaded == []
 
 
 async def test_adapter_is_loaded_false() -> None:
@@ -71,134 +91,89 @@ async def test_adapter_unload_not_loaded() -> None:
 async def test_adapter_resolve_raises_not_loaded() -> None:
     adapter = KokoroAdapter()
     with pytest.raises(RuntimeError, match="not loaded"):
-        adapter._lc_resolve()
+        adapter._resolve()
 
 
 ##### LIFECYCLE WITH MOCKS #####
 
 
-async def test_load_sets_model(tmp_path) -> None:
-    model_path = tmp_path / "kokoro-v1.0.onnx"
-    voices_path = tmp_path / "voices-v1.0.bin"
-    model_path.write_bytes(b"fake")
-    voices_path.write_bytes(b"fake")
-
-    adapter = KokoroAdapter(model_dir=tmp_path)
-    mock_kokoro = MagicMock()
-    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro):
-        await adapter.load()
-
-    assert await adapter.is_loaded()
-    assert adapter.loaded_models() == ["kokoro"]
+async def test_load_stores_model(mocker) -> None:
+    adapter = KokoroAdapter()
+    spec = TTSModelSpec(device=DeviceType.CPU)
+    adapter._models[spec] = mocker.MagicMock()
+    assert await adapter.is_loaded(spec)
+    assert spec in adapter.loaded
 
 
-async def test_load_skips_if_already_loaded(tmp_path) -> None:
-    model_path = tmp_path / "kokoro-v1.0.onnx"
-    voices_path = tmp_path / "voices-v1.0.bin"
-    model_path.write_bytes(b"fake")
-    voices_path.write_bytes(b"fake")
-
-    adapter = KokoroAdapter(model_dir=tmp_path)
-    mock_kokoro = MagicMock()
-    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro) as ctor:
-        await adapter.load()
-        await adapter.load()
-    ctor.assert_called_once()
+async def test_load_idempotent(mocker) -> None:
+    adapter = KokoroAdapter()
+    spec = TTSModelSpec(device=DeviceType.CPU)
+    first_model = mocker.MagicMock()
+    adapter._models[spec] = first_model
+    await adapter.load(spec)
+    assert adapter._models[spec] is first_model
 
 
-async def test_unload_clears_model(tmp_path) -> None:
-    model_path = tmp_path / "kokoro-v1.0.onnx"
-    voices_path = tmp_path / "voices-v1.0.bin"
-    model_path.write_bytes(b"fake")
-    voices_path.write_bytes(b"fake")
-
-    adapter = KokoroAdapter(model_dir=tmp_path)
-    with patch("e_voice.adapters.kokoro.Kokoro", return_value=MagicMock()):
-        await adapter.load()
-    assert await adapter.unload() is True
-    assert not await adapter.is_loaded()
+async def test_unload_clears_model(mocker) -> None:
+    adapter = KokoroAdapter()
+    spec = TTSModelSpec(device=DeviceType.CPU)
+    adapter._models[spec] = mocker.MagicMock()
+    assert await adapter.unload(spec) is True
+    assert not await adapter.is_loaded(spec)
 
 
-async def test_synthesize_calls_create(tmp_path) -> None:
-    model_path = tmp_path / "kokoro-v1.0.onnx"
-    voices_path = tmp_path / "voices-v1.0.bin"
-    model_path.write_bytes(b"fake")
-    voices_path.write_bytes(b"fake")
-
-    mock_kokoro = MagicMock()
-    mock_kokoro.create.return_value = (np.zeros(24000, dtype=np.float32), 24000)
-
-    adapter = KokoroAdapter(model_dir=tmp_path)
-    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro):
-        await adapter.load()
-    samples, sr = await adapter.synthesize("hello", voice="af_heart")
-    assert sr == 24000
-    assert len(samples) == 24000
+##### SYNTHESIZE #####
 
 
-async def test_download_creates_files(tmp_path) -> None:
-    adapter = KokoroAdapter(model_dir=tmp_path)
-    with patch.object(adapter, "_lc_download_files") as dl:
-        path = await adapter.download()
-    dl.assert_called_once()
-    assert path == tmp_path
+async def test_synthesize_calls_create(mocker) -> None:
+    adapter = KokoroAdapter()
+    mock_kokoro = mocker.MagicMock()
+    mock_kokoro.create.return_value = (np.zeros(24_000, dtype=np.float32), 24_000)
+    spec = TTSModelSpec(device=DeviceType.CPU)
+    adapter._models[spec] = mock_kokoro
+
+    samples, sr = await adapter.synthesize("hello", spec=spec)
+    assert sr == 24_000
+    assert len(samples) == 24_000
+    mock_kokoro.create.assert_called_once()
 
 
 ##### SYNTHESIZE STREAM #####
 
 
-async def test_synthesize_stream_yields_chunks(tmp_path) -> None:
-    model_path = tmp_path / "kokoro-v1.0.onnx"
-    voices_path = tmp_path / "voices-v1.0.bin"
-    model_path.write_bytes(b"fake")
-    voices_path.write_bytes(b"fake")
-
+async def test_synthesize_stream_yields_chunks(mocker) -> None:
+    adapter = KokoroAdapter()
+    mock_kokoro = mocker.MagicMock()
     chunks = [
-        (np.zeros(4800, dtype=np.float32), 24000),
-        (np.zeros(4800, dtype=np.float32), 24000),
+        (np.zeros(4800, dtype=np.float32), 24_000),
+        (np.zeros(4800, dtype=np.float32), 24_000),
     ]
-
-    mock_kokoro = MagicMock()
 
     async def fake_stream(*args, **kwargs):
         for c in chunks:
             yield c
 
     mock_kokoro.create_stream = fake_stream
-
-    adapter = KokoroAdapter(model_dir=tmp_path)
-    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro):
-        await adapter.load()
+    spec = TTSModelSpec(device=DeviceType.CPU)
+    adapter._models[spec] = mock_kokoro
 
     collected = []
-    async for samples, sr in adapter.synthesize_stream("hello", voice="af_heart"):
+    async for samples, sr in adapter.synthesize_stream("hello", spec=spec):
         collected.append((samples, sr))
 
     assert len(collected) == 2
-    assert collected[0][1] == 24000
+    assert collected[0][1] == 24_000
 
 
-##### GET VOICES #####
+##### VOICES #####
 
 
-async def test_get_voices(tmp_path) -> None:
-    model_path = tmp_path / "kokoro-v1.0.onnx"
-    voices_path = tmp_path / "voices-v1.0.bin"
-    model_path.write_bytes(b"fake")
-    voices_path.write_bytes(b"fake")
-
-    mock_kokoro = MagicMock()
-    mock_kokoro.get_voices.return_value = ["af_heart", "bf_emma", "jf_alpha"]
-
-    adapter = KokoroAdapter(model_dir=tmp_path)
-    with patch("e_voice.adapters.kokoro.Kokoro", return_value=mock_kokoro):
-        await adapter.load()
-
-    voices = adapter.get_voices()
-    assert voices == ["af_heart", "bf_emma", "jf_alpha"]
-
-
-async def test_get_voices_not_loaded() -> None:
+async def test_voices_cached_after_load(mocker) -> None:
     adapter = KokoroAdapter()
-    with pytest.raises(RuntimeError, match="not loaded"):
-        adapter.get_voices()
+    adapter._voices = ["af_heart", "bf_emma"]
+    assert adapter.voices == ["af_heart", "bf_emma"]
+
+
+async def test_voices_empty_before_load() -> None:
+    adapter = KokoroAdapter()
+    assert adapter.voices == []

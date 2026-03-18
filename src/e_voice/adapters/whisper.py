@@ -1,338 +1,387 @@
-"""Faster-whisper adapter — model lifecycle, transcription, translation, formatting."""
+"""Faster-whisper adapter — model lifecycle, transcription, translation, streaming."""
 
 import asyncio
 import threading
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from faster_whisper import WhisperModel
 from faster_whisper.transcribe import Segment, TranscriptionInfo
 from huggingface_hub import snapshot_download
 from numpy.typing import NDArray
+from ovld import ovld
 
 from e_voice.adapters.base import BaseModelAdapter
 from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.settings import STTConfig, VADConfig, resolve_compute_type
 from e_voice.core.settings import settings as st
+from e_voice.models.stt import InferenceParams, ModelSpec
 from e_voice.models.transcription import (
-    ResponseFormat,
     TranscriptionResponse,
     TranscriptionSegment,
     TranscriptionVerboseResponse,
     TranscriptionWord,
 )
 
-_HF_ALLOW_PATTERNS = ["config.json", "model.bin", "tokenizer.json", "vocabulary.*", "preprocessor_config.json"]
+type Task = Literal["transcribe", "translate"]
+
+_SENTINEL = object()
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def format_segment(seg: Segment, fmt: Literal["text"], index: int = 0) -> str:
+    """Plain text — just the text."""
+    return seg.text
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def format_segment(seg: Segment, fmt: Literal["json"], index: int = 0) -> str:
+    """JSON — minimal envelope."""
+    return TranscriptionResponse(text=seg.text).model_dump_json()
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def format_segment(seg: Segment, fmt: Literal["verbose_json"], index: int = 0) -> str:
+    """Verbose JSON — full segment model."""
+    return segment_to_model(seg).model_dump_json()
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def format_segment(seg: Segment, fmt: Literal["srt"], index: int = 0) -> str:
+    """SRT subtitle block."""
+    start, end = Audio.format_timestamp(seg.start), Audio.format_timestamp(seg.end)
+    return f"{index + 1}\n{start} --> {end}\n{seg.text.strip()}\n"
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def format_segment(seg: Segment, fmt: Literal["vtt"], index: int = 0) -> str:
+    """VTT subtitle block."""
+    start, end = Audio.format_timestamp_vtt(seg.start), Audio.format_timestamp_vtt(seg.end)
+    return f"{start} --> {end}\n{seg.text.strip()}\n"
+
+
+# ── ovld: Batch Response Dispatch ──────────────────────────────────────
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def build_response(
+    segments: list[Segment],
+    info: TranscriptionInfo,
+    audio: np.ndarray,
+    fmt: Literal["text"],
+    word_timestamps: bool = False,
+    task: str = "transcribe",
+) -> tuple[str, str]:
+    return "".join(s.text for s in segments).strip(), "text/plain"
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def build_response(
+    segments: list[Segment],
+    info: TranscriptionInfo,
+    audio: np.ndarray,
+    fmt: Literal["json"],
+    word_timestamps: bool = False,
+    task: str = "transcribe",
+) -> tuple[str, str]:
+    text = "".join(s.text for s in segments).strip()
+    return TranscriptionResponse(text=text).model_dump_json(), "application/json"
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def build_response(
+    segments: list[Segment],
+    info: TranscriptionInfo,
+    audio: np.ndarray,
+    fmt: Literal["verbose_json"],
+    word_timestamps: bool = False,
+    task: str = "transcribe",
+) -> tuple[str, str]:
+    text = "".join(s.text for s in segments).strip()
+    seg_models = [segment_to_model(s, word_timestamps) for s in segments]
+    all_words = [w for s in seg_models if s.words for w in s.words] if word_timestamps else None
+    resp = TranscriptionVerboseResponse(
+        task=task,
+        language=info.language,
+        duration=Audio.duration(audio),
+        text=text,
+        segments=seg_models,
+        words=all_words,
+    )
+    return resp.model_dump_json(), "application/json"
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def build_response(
+    segments: list[Segment],
+    info: TranscriptionInfo,
+    audio: np.ndarray,
+    fmt: Literal["srt"],
+    word_timestamps: bool = False,
+    task: str = "transcribe",
+) -> tuple[str, str]:
+    body = "\n".join(format_segment(s, "srt", i) for i, s in enumerate(segments))
+    return body, "text/plain"
+
+
+@ovld  # ty: ignore[invalid-overload,useless-overload-body]
+def build_response(
+    segments: list[Segment],
+    info: TranscriptionInfo,
+    audio: np.ndarray,
+    fmt: Literal["vtt"],
+    word_timestamps: bool = False,
+    task: str = "transcribe",
+) -> tuple[str, str]:
+    body = "WEBVTT\n\n" + "\n".join(format_segment(s, "vtt") for s in segments)
+    return body, "text/plain"
+
+
+# ── Pure Helpers ───────────────────────────────────────────────────────
+
+
+def segment_to_model(seg: Segment, word_timestamps: bool = False) -> TranscriptionSegment:
+    """Convert faster-whisper Segment → Pydantic model."""
+    words = (
+        [TranscriptionWord(start=w.start, end=w.end, word=w.word, probability=w.probability) for w in seg.words]
+        if word_timestamps and seg.words
+        else None
+    )
+    return TranscriptionSegment(
+        id=seg.id,
+        seek=seg.seek,
+        start=seg.start,
+        end=seg.end,
+        text=seg.text,
+        tokens=list(seg.tokens),
+        temperature=seg.temperature,
+        avg_logprob=seg.avg_logprob,
+        compression_ratio=seg.compression_ratio,
+        no_speech_prob=seg.no_speech_prob,
+        words=words,
+    )
+
+
+# ── Adapter ────────────────────────────────────────────────────────────
 
 
 class WhisperAdapter(BaseModelAdapter):
-    """Manages faster-whisper model lifecycle and inference."""
+    """Manages faster-whisper model registry and inference.
 
-    __slots__ = ("_models", "_config", "_vad_config", "_gpu_lock")
+    Lifecycle:
+        1. Lifespan creates adapter, calls `await adapter.load(spec)` per desired model+device.
+        2. Stores adapter in `app.state.whisper`.
+        3. Routers resolve via `adapter.transcribe(audio, spec=spec, params=params)`.
+        4. Shutdown calls `await adapter.unload(spec)` or just lets GC handle it.
+    """
+
+    __slots__ = ("_config", "_gpu_lock", "_models", "_vad_config")
 
     def __init__(self, config: STTConfig | None = None, vad_config: VADConfig | None = None) -> None:
-        self._models: dict[str, WhisperModel] = {}
+        self._models: dict[ModelSpec, WhisperModel] = {}
         self._config = config or st.stt
         self._vad_config = vad_config or st.vad
         self._gpu_lock = threading.Lock()
 
-    ##### MODEL LIFECYCLE #####
+    # ── Model Lifecycle ────────────────────────────────────────────────
 
-    async def load(self, model_id: str) -> None:
-        """Load a whisper model into memory (thread-offloaded)."""
-        if model_id in self._models:
+    async def load(self, spec: ModelSpec) -> None:
+        """Load whisper model into memory (thread-offloaded). Idempotent."""
+        if spec in self._models:
             return
+        logger.info("🔄 MODEL_LOADING", extra={"model": spec.model_id, "device": spec.device})
+        self._models[spec] = await asyncio.to_thread(self._create_model, spec)
+        logger.info("✅ MODEL_LOADED", extra={"model": spec.model_id, "device": spec.device})
 
-        logger.info("loading whisper model", model=model_id, device=self._config.device.value, step="MODEL")
-        model = await asyncio.to_thread(self._lc_create_model, model_id)
-        self._models[model_id] = model
-        logger.info("whisper model loaded", model=model_id, step="MODEL")
-
-    async def unload(self, model_id: str) -> bool:
-        """Unload a model from memory."""
-        if (model := self._models.pop(model_id, None)) is not None:
+    async def unload(self, spec: ModelSpec) -> bool:
+        """Unload model from memory."""
+        if (model := self._models.pop(spec, None)) is not None:
             del model
-            logger.info("whisper model unloaded", model=model_id, step="MODEL")
+            logger.info("🗑️ MODEL_UNLOADED", extra={"model": spec.model_id})
             return True
         return False
 
-    async def is_loaded(self, model_id: str) -> bool:
-        return model_id in self._models
+    async def is_loaded(self, spec: ModelSpec) -> bool:
+        return spec in self._models
 
-    def loaded_models(self) -> list[str]:
-        return list(self._models.keys())
+    def loaded_models(self) -> list[ModelSpec]:
+        return list(self._models)
 
     async def download(self, model_id: str) -> Path:
         """Download model from HuggingFace Hub (thread-offloaded)."""
-        logger.info("downloading model", model=model_id, step="DOWNLOAD")
+        logger.info("⬇️ MODEL_DOWNLOADING", extra={"model": model_id})
         path = await asyncio.to_thread(
             snapshot_download,
             repo_id=model_id,
             repo_type="model",
             local_dir=str(st.MODELS_PATH / "stt" / model_id.replace("/", "--")),
-            allow_patterns=_HF_ALLOW_PATTERNS,
+            allow_patterns=st.stt.hf_allow_patterns,
         )
-        logger.info("model downloaded", model=model_id, path=path, step="DOWNLOAD")
+        logger.info("✅ MODEL_DOWNLOADED", extra={"model": model_id, "path": path})
         return Path(path)
 
-    def _lc_create_model(self, model_id: str) -> WhisperModel:
+    # ── Batch Inference ────────────────────────────────────────────────
+
+    async def transcribe(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        spec: ModelSpec | None = None,
+        params: InferenceParams | None = None,
+        response_format: str | None = None,
+    ) -> tuple[list[Segment], TranscriptionInfo] | tuple[str, str]:
+        """Full transcription. Without response_format → raw (segments, info). With → (body, content_type)."""
+        p = params or InferenceParams()
+        segments, info = await self._run_batch(audio, task="transcribe", spec=spec, params=p)
+        if response_format is None:
+            return segments, info
+        return build_response(segments, info, audio, response_format, p.word_timestamps)  # ty: ignore[no-matching-overload]
+
+    async def translate(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        spec: ModelSpec | None = None,
+        params: InferenceParams | None = None,
+        response_format: str | None = None,
+    ) -> tuple[list[Segment], TranscriptionInfo] | tuple[str, str]:
+        """Full translation. Without response_format → raw (segments, info). With → (body, content_type)."""
+        p = params or InferenceParams()
+        segments, info = await self._run_batch(audio, task="translate", spec=spec, params=p)
+        if response_format is None:
+            return segments, info
+        return build_response(segments, info, audio, response_format, p.word_timestamps, "translate")  # ty: ignore[no-matching-overload]
+
+    # ── Streaming Inference ────────────────────────────────────────────
+
+    async def transcribe_stream(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        spec: ModelSpec | None = None,
+        params: InferenceParams | None = None,
+        response_format: str = "text",
+    ) -> AsyncGenerator[str]:
+        """Yield formatted segments as decoded — true streaming for SSE."""
+        idx = 0
+        async for seg in self._run_stream(audio, task="transcribe", spec=spec, params=params or InferenceParams()):
+            yield format_segment(seg, response_format, idx)  # ty: ignore[no-matching-overload]
+            idx += 1
+
+    async def translate_stream(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        spec: ModelSpec | None = None,
+        params: InferenceParams | None = None,
+        response_format: str = "text",
+    ) -> AsyncGenerator[str]:
+        """Yield formatted translated segments as decoded — true streaming for SSE."""
+        idx = 0
+        async for seg in self._run_stream(audio, task="translate", spec=spec, params=params or InferenceParams()):
+            yield format_segment(seg, response_format, idx)  # ty: ignore[no-matching-overload]
+            idx += 1
+
+    # ── Private: Inference Core ────────────────────────────────────────
+
+    async def _run_batch(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        task: Task,
+        spec: ModelSpec | None,
+        params: InferenceParams,
+    ) -> tuple[list[Segment], TranscriptionInfo]:
+        """Materialize all segments in thread. O(n) segments, GPU-locked."""
+        model = self._resolve(spec)
+
+        def _produce() -> tuple[list[Segment], TranscriptionInfo]:
+            with self._gpu_lock:
+                gen, info = self._invoke(model, audio, task, params)
+                return list(gen), info
+
+        return await asyncio.to_thread(_produce)
+
+    async def _run_stream(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        task: Task,
+        spec: ModelSpec | None,
+        params: InferenceParams,
+    ) -> AsyncGenerator[Segment]:
+        """Queue-bridged streaming: thread produces → async generator consumes."""
+        model = self._resolve(spec)
+        queue: asyncio.Queue[Segment | object] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+        errors: list[Exception] = []
+
+        def _produce() -> None:
+            try:
+                with self._gpu_lock:
+                    gen, _info = self._invoke(model, audio, task, params)
+                    for seg in gen:
+                        loop.call_soon_threadsafe(queue.put_nowait, seg)
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
+
+        producer = loop.run_in_executor(None, _produce)
+
+        while (seg := await queue.get()) is not _SENTINEL:
+            yield seg  # type: ignore[misc]
+
+        await producer
+        if errors:
+            raise errors[0]
+
+    def _invoke(
+        self,
+        model: WhisperModel,
+        audio: NDArray[np.float32],
+        task: Task,
+        params: InferenceParams,
+    ) -> tuple[object, TranscriptionInfo]:
+        """Call model.transcribe. Caller MUST hold _gpu_lock."""
+        use_vad = params.vad_filter or self._vad_config.enabled
+        return model.transcribe(
+            audio,
+            task=task,
+            language=params.language or st.stt.default_language,
+            initial_prompt=params.prompt,
+            temperature=params.temperature,
+            word_timestamps=params.word_timestamps,
+            vad_filter=use_vad,
+            vad_parameters=self._vad_config.to_dict() if use_vad else None,
+            hotwords=params.hotwords,
+            condition_on_previous_text=True,
+        )
+
+    # ── Private: Model Registry ────────────────────────────────────────
+
+    def _create_model(self, spec: ModelSpec) -> WhisperModel:
         """Instantiate WhisperModel (CPU-bound, runs in thread)."""
         return WhisperModel(
-            model_id,
-            device=self._config.device.value,
+            spec.model_id,
+            device=spec.device,
             device_index=self._config.device_index,
-            compute_type=resolve_compute_type(self._config.device, self._config.compute_type).value,
+            compute_type=str(resolve_compute_type(spec.device, spec.compute_type)),
             cpu_threads=self._config.cpu_threads,
             num_workers=self._config.num_workers,
             download_root=str(st.MODELS_PATH / "stt"),
         )
 
-    def _lc_resolve(self, model_id: str | None) -> WhisperModel:
-        """Resolve model_id to a loaded WhisperModel. Raises if not loaded."""
-        mid = model_id or st.stt.model
-        if mid not in self._models:
-            raise RuntimeError(f"Model '{mid}' not loaded. Call load() first.")
-        return self._models[mid]
-
-    ##### TRANSCRIPTION #####
-
-    async def transcribe(
-        self,
-        audio_data: NDArray[np.float32],
-        *,
-        model_id: str | None = None,
-        language: str | None = None,
-        prompt: str | None = None,
-        temperature: float = 0.0,
-        word_timestamps: bool = False,
-        vad_filter: bool = False,
-        hotwords: str | None = None,
-    ) -> tuple[list[Segment], TranscriptionInfo]:
-        """Run transcription (thread-offloaded). Returns segments and info."""
-        model = self._lc_resolve(model_id)
-        return await asyncio.to_thread(
-            self._tr_run,
-            model,
-            audio_data,
-            "transcribe",
-            language,
-            prompt,
-            temperature,
-            word_timestamps,
-            vad_filter,
-            hotwords,
+    def _resolve(self, spec: ModelSpec | None) -> WhisperModel:
+        """Resolve spec → loaded WhisperModel. Falls back to default spec from config."""
+        target = spec or ModelSpec(
+            model_id=st.stt.model,
+            device=self._config.device.value,
+            compute_type=self._config.compute_type.value,
         )
-
-    async def transcribe_stream(
-        self,
-        audio_data: NDArray[np.float32],
-        *,
-        model_id: str | None = None,
-        language: str | None = None,
-        prompt: str | None = None,
-        temperature: float = 0.0,
-        vad_filter: bool = False,
-        hotwords: str | None = None,
-    ) -> AsyncGenerator[Segment]:
-        """Yield segments one at a time for SSE streaming. GPU-locked and thread-offloaded."""
-        model = self._lc_resolve(model_id)
-        segments, _info = await asyncio.to_thread(
-            self._tr_run,
-            model,
-            audio_data,
-            "transcribe",
-            language,
-            prompt,
-            temperature,
-            False,
-            vad_filter,
-            hotwords,
-        )
-        for segment in segments:
-            yield segment
-
-    def _tr_run(
-        self,
-        model: WhisperModel,
-        audio_data: NDArray[np.float32],
-        task: str,
-        language: str | None,
-        prompt: str | None,
-        temperature: float,
-        word_timestamps: bool,
-        vad_filter: bool,
-        hotwords: str | None,
-    ) -> tuple[list[Segment], TranscriptionInfo]:
-        """Execute transcription and materialize segments (CPU-bound thread). Serialized via lock."""
-        with self._gpu_lock:
-            segments_gen, info = self._tr_invoke(
-                model, audio_data, task, language, prompt, temperature, word_timestamps, vad_filter, hotwords
-            )
-            return list(segments_gen), info
-
-    def _tr_invoke(
-        self,
-        model: WhisperModel,
-        audio_data: NDArray[np.float32],
-        task: str,
-        language: str | None,
-        prompt: str | None,
-        temperature: float,
-        word_timestamps: bool,
-        vad_filter: bool,
-        hotwords: str | None,
-    ) -> tuple[object, TranscriptionInfo]:
-        """Call model.transcribe with unified params. Returns (generator, info)."""
-        use_vad = vad_filter or self._vad_config.enabled
-        return model.transcribe(
-            audio_data,
-            task=task,
-            language=language or st.stt.default_language,
-            initial_prompt=prompt,
-            temperature=temperature,
-            word_timestamps=word_timestamps,
-            vad_filter=use_vad,
-            vad_parameters=self._vad_config.to_dict() if use_vad else None,
-            hotwords=hotwords,
-            condition_on_previous_text=True,
-        )
-
-    ##### TRANSLATION #####
-
-    async def translate(
-        self,
-        audio_data: NDArray[np.float32],
-        *,
-        model_id: str | None = None,
-        prompt: str | None = None,
-        temperature: float = 0.0,
-        vad_filter: bool = False,
-    ) -> tuple[list[Segment], TranscriptionInfo]:
-        """Run translation to English (thread-offloaded)."""
-        model = self._lc_resolve(model_id)
-        return await asyncio.to_thread(
-            self._tr_run,
-            model,
-            audio_data,
-            "translate",
-            None,
-            prompt,
-            temperature,
-            False,
-            vad_filter,
-            None,
-        )
-
-    ##### RESPONSE FORMATTING #####
-
-    @staticmethod
-    def segments_to_text(segments: list[Segment]) -> str:
-        """Join segment texts."""
-        return "".join(seg.text for seg in segments).strip()
-
-    @staticmethod
-    def segment_to_model(seg: Segment, word_timestamps: bool = False) -> TranscriptionSegment:
-        """Convert faster-whisper Segment to Pydantic model."""
-        words = None
-        if word_timestamps and seg.words:
-            words = [
-                TranscriptionWord(start=w.start, end=w.end, word=w.word, probability=w.probability) for w in seg.words
-            ]
-
-        return TranscriptionSegment(
-            id=seg.id,
-            seek=seg.seek,
-            start=seg.start,
-            end=seg.end,
-            text=seg.text,
-            tokens=list(seg.tokens),
-            temperature=seg.temperature,
-            avg_logprob=seg.avg_logprob,
-            compression_ratio=seg.compression_ratio,
-            no_speech_prob=seg.no_speech_prob,
-            words=words,
-        )
-
-    @staticmethod
-    def build_response(
-        segments: list[Segment],
-        info: TranscriptionInfo,
-        audio_data: NDArray[np.float32],
-        response_format: ResponseFormat,
-        word_timestamps: bool = False,
-        task: str = "transcribe",
-    ) -> tuple[str, str]:
-        """Build formatted response. Returns (body, content_type)."""
-        text = WhisperAdapter.segments_to_text(segments)
-
-        match response_format:
-            case ResponseFormat.TEXT:
-                return text, "text/plain"
-
-            case ResponseFormat.JSON:
-                return TranscriptionResponse(text=text).model_dump_json(), "application/json"
-
-            case ResponseFormat.VERBOSE_JSON:
-                seg_models = [WhisperAdapter.segment_to_model(seg, word_timestamps) for seg in segments]
-                all_words = [w for seg in seg_models if seg.words for w in seg.words] if word_timestamps else None
-
-                resp = TranscriptionVerboseResponse(
-                    task=task,
-                    language=info.language,
-                    duration=Audio.duration(audio_data),
-                    text=text,
-                    segments=seg_models,
-                    words=all_words,
-                )
-                return resp.model_dump_json(), "application/json"
-
-            case ResponseFormat.SRT:
-                return _format_srt(segments), "text/plain"
-
-            case ResponseFormat.VTT:
-                return _format_vtt(segments), "text/plain"
-
-    @staticmethod
-    def format_segment_for_streaming(
-        segment: Segment,
-        response_format: ResponseFormat,
-        segment_index: int = 0,
-    ) -> str:
-        """Format a single segment for SSE streaming."""
-        match response_format:
-            case ResponseFormat.TEXT:
-                return segment.text
-            case ResponseFormat.JSON:
-                return TranscriptionResponse(text=segment.text).model_dump_json()
-            case ResponseFormat.VERBOSE_JSON:
-                return WhisperAdapter.segment_to_model(segment).model_dump_json()
-            case ResponseFormat.SRT:
-                return _format_srt_segment(segment, segment_index)
-            case ResponseFormat.VTT:
-                return _format_vtt_segment(segment)
-
-
-##### SUBTITLE FORMATTING #####
-
-
-def _format_srt(segments: list[Segment]) -> str:
-    return "\n".join(_format_srt_segment(seg, i) for i, seg in enumerate(segments))
-
-
-def _format_srt_segment(segment: Segment, index: int) -> str:
-    start = Audio.format_timestamp(segment.start)
-    end = Audio.format_timestamp(segment.end)
-    return f"{index + 1}\n{start} --> {end}\n{segment.text.strip()}\n"
-
-
-def _format_vtt(segments: list[Segment]) -> str:
-    header = "WEBVTT\n\n"
-    return header + "\n".join(_format_vtt_segment(seg) for seg in segments)
-
-
-def _format_vtt_segment(segment: Segment) -> str:
-    start = Audio.format_timestamp_vtt(segment.start)
-    end = Audio.format_timestamp_vtt(segment.end)
-    return f"{start} --> {end}\n{segment.text.strip()}\n"
+        if target not in self._models:
+            raise RuntimeError(f"Model {target!r} not loaded. Call load() first.")
+        return self._models[target]

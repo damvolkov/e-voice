@@ -337,6 +337,7 @@ dependencies = [
     { name = "nvidia-cublas-cu12" },
     { name = "nvidia-cudnn-cu12" },
     { name = "orjson" },
+    { name = "ovld" },
     { name = "pydantic" },
     { name = "pydantic-settings", extra = ["yaml"] },
     { name = "robyn" },
@@ -382,6 +383,7 @@ requires-dist = [
     { name = "nvidia-cublas-cu12", specifier = ">=12.9.1.4" },
     { name = "nvidia-cudnn-cu12", specifier = ">=9.20.0.48" },
     { name = "orjson", specifier = ">=3.10.0" },
+    { name = "ovld", specifier = ">=0.5.14" },
     { name = "pydantic", specifier = ">=2.11.0" },
     { name = "pydantic-settings", extras = ["yaml"], specifier = ">=2.10.0" },
     { name = "robyn", specifier = ">=0.72.0" },
@@ -1057,6 +1059,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9d/8c/74509f715ff189d2aca90ebb0bd5af6658e0f9aa2512abbe6feca4c78208/orjson-3.11.0-cp312-cp312-win32.whl", hash = "sha256:8514f9f9c667ce7d7ef709ab1a73e7fcab78c297270e90b1963df7126d2b0e23", size = 134695, upload-time = "2025-07-15T16:07:30.034Z" },
     { url = "https://files.pythonhosted.org/packages/82/ba/ef25e3e223f452a01eac6a5b38d05c152d037508dcbf87ad2858cbb7d82e/orjson-3.11.0-cp312-cp312-win_amd64.whl", hash = "sha256:41b38a894520b8cb5344a35ffafdf6ae8042f56d16771b2c5eb107798cee85ee", size = 129446, upload-time = "2025-07-15T16:07:31.412Z" },
     { url = "https://files.pythonhosted.org/packages/e3/cd/6f4d93867c5d81bb4ab2d4ac870d3d6e9ba34fa580a03b8d04bf1ce1d8ad/orjson-3.11.0-cp312-cp312-win_arm64.whl", hash = "sha256:5579acd235dd134467340b2f8a670c1c36023b5a69c6a3174c4792af7502bd92", size = 126400, upload-time = "2025-07-15T16:07:34.143Z" },
+]
+
+[[package]]
+name = "ovld"
+version = "0.5.14"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/2d/ef4b1de457fb0a5e96fc6cdeaf7cd185186ac4bde6b1d922381fe89c439d/ovld-0.5.14.tar.gz", hash = "sha256:34bb7c1a3a3ee2656a8e8d7b840fdb9e4828efa27ea91e50d8e93b3f35122179", size = 105191, upload-time = "2026-01-15T23:09:50.254Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/45/032d3c8008080861085e5bea4d0635fcaf75a362dcf2668780c1bd610f82/ovld-0.5.14-py3-none-any.whl", hash = "sha256:964474b85a1ecd8d1a163db4d02c1be67ddd87c3e64ee115a46cf7c666828152", size = 39941, upload-time = "2026-01-15T23:09:48.981Z" },
 ]
 
 [[package]]

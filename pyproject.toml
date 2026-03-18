@@ -47,6 +47,7 @@ dependencies = [
     "websockets>=16.0",
     "nvidia-cublas-cu12>=12.9.1.4",
     "nvidia-cudnn-cu12>=9.20.0.48",
+    "ovld>=0.5.14",
 ]
 
 [project.scripts]
@@ -114,6 +115,9 @@ exclude = ["source/"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/e_voice/adapters/whisper.py" = ["F811"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["e_voice"]

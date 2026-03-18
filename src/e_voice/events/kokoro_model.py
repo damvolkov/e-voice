@@ -2,7 +2,6 @@
 
 from e_voice.adapters.kokoro import KokoroAdapter
 from e_voice.core.lifespan import BaseEvent
-from e_voice.core.settings import settings as st
 
 
 class KokoroModelEvent(BaseEvent[KokoroAdapter]):
@@ -12,10 +11,11 @@ class KokoroModelEvent(BaseEvent[KokoroAdapter]):
 
     async def startup(self) -> KokoroAdapter:
         """Create adapter and load default model."""
-        adapter = KokoroAdapter(st.MODELS_PATH / "tts")
+        adapter = KokoroAdapter()
         await adapter.load()
         return adapter
 
     async def shutdown(self, instance: KokoroAdapter) -> None:
-        """Unload model."""
-        await instance.unload()
+        """Unload all models."""
+        for spec in list(instance.loaded):
+            await instance.unload(spec)

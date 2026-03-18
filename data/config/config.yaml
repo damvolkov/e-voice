@@ -14,6 +14,7 @@ stt:
   num_workers: 1
   default_language: es
   default_response_format: text
+  cpu_fallback: true
 
 tts:
   device: cuda

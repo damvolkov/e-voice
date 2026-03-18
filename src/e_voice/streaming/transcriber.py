@@ -10,6 +10,7 @@ from numpy.typing import NDArray
 
 from e_voice.adapters.whisper import WhisperAdapter
 from e_voice.core.settings import settings as st
+from e_voice.models.stt import InferenceParams
 from e_voice.streaming.audio import AudioBuffer
 from e_voice.streaming.text import (
     StreamingWord,
@@ -158,12 +159,13 @@ async def process_audio_chunk(
 
     segments, info = await whisper.transcribe(
         audio_slice,
-        model_id=session.model_id,
-        language=session.language,
-        prompt=prompt_text,
-        temperature=0.0,
-        word_timestamps=True,
-        vad_filter=False,
+        params=InferenceParams(
+            language=session.language,
+            prompt=prompt_text,
+            temperature=0.0,
+            word_timestamps=True,
+            vad_filter=False,
+        ),
     )
 
     session._ss_last_transcribe_end = session.audio_buffer.total_duration
