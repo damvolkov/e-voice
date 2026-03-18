@@ -44,8 +44,7 @@ class ModelsListResponse(BaseModel):
     tts: list[ModelEntry] = Field(default_factory=list)
 
 
-class ErrorResponse(BaseModel):
-    """Standard error response."""
+class LoadedModelsResponse(BaseModel):
+    """Response listing loaded/running models."""
 
-    error: str
-    detail: str | None = None
+    models: list[str]

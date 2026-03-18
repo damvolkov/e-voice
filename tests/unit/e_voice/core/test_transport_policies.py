@@ -17,6 +17,9 @@ from robyn import Headers, Response, SSEMessage, SSEResponse, StreamingResponse
 from e_voice.adapters.whisper import build_response, format_segment
 from e_voice.core.audio import Audio
 from e_voice.core.router import parse_response
+from e_voice.models.tts import SpeechAudioDeltaEvent, SpeechAudioDoneEvent
+from e_voice.streaming.transcriber import StreamingEvent, StreamingEventType
+from e_voice.websockets.stt import format_event
 
 ##### STUBS #####
 
@@ -34,7 +37,7 @@ def _segment(
         start=start,
         end=end,
         text=text,
-        tokens=(1, 2, 3),
+        tokens=[1, 2, 3],
         avg_logprob=-0.5,
         compression_ratio=1.0,
         no_speech_prob=0.01,
@@ -50,8 +53,8 @@ def _info(language: str = "en") -> TranscriptionInfo:
         duration=1.0,
         duration_after_vad=1.0,
         all_language_probs=None,
-        transcription_options=None,
-        vad_options=None,
+        transcription_options=None,  # ty: ignore[invalid-argument-type]
+        vad_options=None,  # ty: ignore[invalid-argument-type]
     )
 
 
@@ -132,7 +135,7 @@ async def test_stt_http_verbose_json_format() -> None:
 
 @pytest.mark.parametrize("fmt", ["srt", "vtt"], ids=["srt", "vtt"])
 async def test_stt_http_subtitle_formats(fmt: str) -> None:
-    body, ct = build_response(
+    body, ct = build_response(  # ty: ignore[no-matching-overload]
         [_segment(text=" Hello.", start=0.0, end=1.0)],
         _info(),
         np.zeros(16000, dtype=np.float32),
@@ -183,9 +186,6 @@ async def test_stt_sse_status_code() -> None:
 
 
 async def test_stt_ws_event_json_format() -> None:
-    from e_voice.streaming.transcriber import StreamingEvent, StreamingEventType
-    from e_voice.websockets.stt import format_event
-
     event = StreamingEvent(
         type=StreamingEventType.TRANSCRIPT_UPDATE,
         confirmed_text="Hello",
@@ -200,9 +200,6 @@ async def test_stt_ws_event_json_format() -> None:
 
 
 async def test_stt_ws_event_text_format() -> None:
-    from e_voice.streaming.transcriber import StreamingEvent, StreamingEventType
-    from e_voice.websockets.stt import format_event
-
     event = StreamingEvent(
         type=StreamingEventType.TRANSCRIPT_UPDATE,
         confirmed_text="Hello world",
@@ -226,9 +223,6 @@ async def test_tts_http_encodes_wav() -> None:
 
 
 async def test_tts_sse_delta_event() -> None:
-    from e_voice.core.audio import Audio
-    from e_voice.models.tts import SpeechAudioDeltaEvent
-
     b64 = Audio.float32_to_base64_pcm16(_FAKE_AUDIO_F32[:4800])
     event = SpeechAudioDeltaEvent(audio=b64)
     parsed = orjson.loads(event.model_dump_json())
@@ -240,17 +234,12 @@ async def test_tts_sse_delta_event() -> None:
 
 
 async def test_tts_sse_done_event() -> None:
-    from e_voice.models.tts import SpeechAudioDoneEvent
-
     parsed = orjson.loads(SpeechAudioDoneEvent().model_dump_json())
     assert parsed["type"] == "speech.audio.done"
     assert len(parsed) == 1
 
 
 async def test_tts_sse_full_sequence() -> None:
-    from e_voice.core.audio import Audio
-    from e_voice.models.tts import SpeechAudioDeltaEvent, SpeechAudioDoneEvent
-
     events = [
         SpeechAudioDeltaEvent(audio=Audio.float32_to_base64_pcm16(_FAKE_AUDIO_F32[:4800])).model_dump_json(),
         SpeechAudioDeltaEvent(audio=Audio.float32_to_base64_pcm16(_FAKE_AUDIO_F32[:4800])).model_dump_json(),
@@ -269,7 +258,7 @@ async def test_tts_stream_preserves_content_type() -> None:
         yield b"\x00" * 4800
 
     headers = Headers({"Content-Type": "audio/pcm"})
-    sr = StreamingResponse(content=gen(), headers=headers, media_type="audio/pcm")
+    sr = StreamingResponse(content=gen(), headers=headers, media_type="audio/pcm")  # ty: ignore[invalid-argument-type]
     result = parse_response(sr)
     assert isinstance(result, StreamingResponse)
     assert result.headers.get("Content-Type") == "audio/pcm"

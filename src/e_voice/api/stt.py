@@ -1,6 +1,7 @@
 """OpenAI-compatible Speech-to-Text API — transcriptions, translations, models."""
 
-import orjson
+from urllib.parse import unquote  # noqa: F401
+
 from robyn import Request, Response, SSEMessage, SSEResponse, status_codes
 from robyn.types import Files, FormData
 
@@ -9,6 +10,7 @@ from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.router import Router
 from e_voice.core.settings import settings as st
+from e_voice.models.error import error_response
 from e_voice.models.stt import InferenceParams
 from e_voice.models.transcription import (
     ListModelsResponse,
@@ -40,18 +42,14 @@ _TRANSLATION_FIELDS = ("model", "prompt", "response_format", "temperature", "str
 async def transcriptions(request: Request, form_data: FormData, files: Files, global_dependencies):
     """Transcribe audio to text (OpenAI-compatible). Supports true SSE streaming."""
     if not (file_bytes := next(iter(files.values()), None) if files else None):
-        return Response(
-            status_code=status_codes.HTTP_422_UNPROCESSABLE_ENTITY,
-            headers={"content-type": "application/json"},
-            description=orjson.dumps({"error": "No audio file provided"}).decode(),
-        )
+        return error_response(request.url.path, 422, "No audio file provided")
 
     whisper: WhisperAdapter = global_dependencies.get("state").whisper
 
     raw = {k: v for k in _TRANSCRIPTION_FIELDS if (v := form_data.get(k)) is not None}
     if (tg := form_data.get("timestamp_granularities[]")) is not None:
         raw["timestamp_granularities"] = [tg] if isinstance(tg, str) else tg
-    params = TranscriptionParams(**raw)
+    params = TranscriptionParams.model_validate(raw)
 
     logger.info("transcription request", step="STT", model=params.model or st.stt.model, stream=params.stream)
 
@@ -88,16 +86,12 @@ async def transcriptions(request: Request, form_data: FormData, files: Files, gl
 async def translations(request: Request, form_data: FormData, files: Files, global_dependencies):
     """Translate audio to English text (OpenAI-compatible). Supports true SSE streaming."""
     if not (file_bytes := next(iter(files.values()), None) if files else None):
-        return Response(
-            status_code=status_codes.HTTP_422_UNPROCESSABLE_ENTITY,
-            headers={"content-type": "application/json"},
-            description=orjson.dumps({"error": "No audio file provided"}).decode(),
-        )
+        return error_response(request.url.path, 422, "No audio file provided")
 
     whisper: WhisperAdapter = global_dependencies.get("state").whisper
 
     raw = {k: v for k in _TRANSLATION_FIELDS if (v := form_data.get(k)) is not None}
-    params = TranslationParams(**raw)
+    params = TranslationParams.model_validate(raw)
 
     logger.info("translation request", step="STT", model=params.model or st.stt.model, stream=params.stream)
 
@@ -143,15 +137,12 @@ async def list_models(global_dependencies) -> ListModelsResponse:
 
 
 @router.get("/models/:model_id")
-async def get_model(model_id: str, global_dependencies) -> Response:
+async def get_model(request: Request, model_id: str, global_dependencies) -> Response:
     """Get a specific model info."""
+    model_id = unquote(model_id)
     whisper: WhisperAdapter = global_dependencies.get("state").whisper
     if not any(spec.model_id == model_id for spec in whisper.loaded_models()):
-        return Response(
-            status_code=status_codes.HTTP_404_NOT_FOUND,
-            headers={"content-type": "application/json"},
-            description=orjson.dumps({"error": f"Model '{model_id}' not loaded"}).decode(),
-        )
+        return error_response(request.url.path, 404, f"Model '{model_id}' not loaded", error_type="not_found_error")
     return Response(
         status_code=status_codes.HTTP_200_OK,
         headers={"content-type": "application/json"},

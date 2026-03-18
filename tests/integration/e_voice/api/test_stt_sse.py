@@ -39,6 +39,8 @@ async def test_transcription_sse_events_contain_text(
         data={"stream": "true", "response_format": "json"},
     ) as event_source:
         async for event in event_source.aiter_sse():
+            if event.data == "[DONE]":
+                break
             body = orjson.loads(event.data)
             assert "text" in body
             texts.append(body["text"])
@@ -79,9 +81,11 @@ async def test_transcription_sse_quality(
         "POST",
         "/v1/audio/transcriptions",
         files={"file": ("audio.wav", en_sample.audio_bytes(), "audio/wav")},
-        data={"stream": "true", "response_format": "json"},
+        data={"stream": "true", "response_format": "json", "language": "en"},
     ) as event_source:
         async for event in event_source.aiter_sse():
+            if event.data == "[DONE]":
+                break
             body = orjson.loads(event.data)
             texts.append(body.get("text", ""))
 

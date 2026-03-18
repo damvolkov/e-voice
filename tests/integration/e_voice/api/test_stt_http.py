@@ -56,7 +56,7 @@ async def test_transcription_json_quality(
     en_sample,
     audioeval_thresholds: dict[str, float],
 ) -> None:
-    files, data = _multipart(en_sample.audio_bytes(), response_format="json")
+    files, data = _multipart(en_sample.audio_bytes(), response_format="json", language="en")
     response = await stt_client.post("/v1/audio/transcriptions", files=files, data=data)
     assert response.status_code == 200
 

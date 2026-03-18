@@ -94,7 +94,7 @@ def resolve_compute_type(device: DeviceType, compute_type: ComputeType) -> Compu
         return _CPU_COMPUTE
     if _HAS_CT2:
         with suppress(Exception):
-            if "cuda" in ctranslate2.get_supported_compute_types("cuda"):
+            if "cuda" in ctranslate2.get_supported_compute_types("cuda"):  # ty: ignore[possibly-missing-attribute]
                 return _GPU_COMPUTE
     return _CPU_COMPUTE
 

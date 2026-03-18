@@ -1,6 +1,6 @@
 import orjson
 import pytest
-from pytest_audioeval.client import AudioEval
+from pytest_audioeval.tts import TTSClient
 
 _AUDIO_FORMATS = ["pcm", "mp3", "wav", "flac", "opus", "aac"]
 
@@ -23,10 +23,10 @@ _CONTENT_TYPE_MAP: dict[str, str] = {
     ids=_AUDIO_FORMATS,
 )
 async def test_speech_format(
-    audioeval: AudioEval,
+    tts: TTSClient,
     audio_format: str,
 ) -> None:
-    response = await audioeval.tts.post(
+    response = await tts.post(
         json={
             "input": "Hello world.",
             "voice": "af_heart",
@@ -40,9 +40,9 @@ async def test_speech_format(
 
 
 async def test_speech_custom_voice(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
-    response = await audioeval.tts.post(
+    response = await tts.post(
         json={
             "input": "Testing voice selection.",
             "voice": "af_heart",
@@ -55,9 +55,9 @@ async def test_speech_custom_voice(
 
 
 async def test_speech_custom_speed(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
-    response = await audioeval.tts.post(
+    response = await tts.post(
         json={
             "input": "Speed test.",
             "voice": "af_heart",
@@ -71,9 +71,9 @@ async def test_speech_custom_speed(
 
 
 async def test_speech_custom_language(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
-    response = await audioeval.tts.post(
+    response = await tts.post(
         json={
             "input": "Hola mundo.",
             "voice": "ef_dora",
@@ -87,9 +87,9 @@ async def test_speech_custom_language(
 
 
 async def test_speech_invalid_json_returns_422(
-    audioeval: AudioEval,
+    http_client,
 ) -> None:
-    response = await audioeval.tts.post(json={"voice": "af_heart"})
+    response = await http_client.post("/v1/audio/speech", json={"voice": "af_heart"})
     assert response.status_code == 422
 
     body = orjson.loads(response.content)
@@ -97,9 +97,9 @@ async def test_speech_invalid_json_returns_422(
 
 
 async def test_speech_mp3_is_valid_audio(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
-    response = await audioeval.tts.post(
+    response = await tts.post(
         json={
             "input": "Audio validation test.",
             "voice": "af_heart",
@@ -113,9 +113,9 @@ async def test_speech_mp3_is_valid_audio(
 
 
 async def test_speech_wav_is_valid_audio(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
-    response = await audioeval.tts.post(
+    response = await tts.post(
         json={
             "input": "WAV validation test.",
             "voice": "af_heart",
@@ -131,7 +131,7 @@ async def test_speech_wav_is_valid_audio(
 
 
 async def test_voices_returns_list(
-    audioeval: AudioEval,
+    tts: TTSClient,
     http_client,
 ) -> None:
     response = await http_client.get("/v1/audio/voices")

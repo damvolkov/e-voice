@@ -157,7 +157,7 @@ async def process_audio_chunk(
 
     prompt_text = _build_prompt(session.confirmed)
 
-    segments, info = await whisper.transcribe(
+    result = await whisper.transcribe(
         audio_slice,
         params=InferenceParams(
             language=session.language,
@@ -167,6 +167,8 @@ async def process_audio_chunk(
             vad_filter=False,
         ),
     )
+    segments, _info = result
+    assert isinstance(segments, list)
 
     session._ss_last_transcribe_end = session.audio_buffer.total_duration
 

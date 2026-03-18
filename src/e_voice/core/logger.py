@@ -74,7 +74,7 @@ class ColorRenderer:
 def configure_logging(level: str = "info") -> None:
     """Configure structlog with ANSI colored stderr output."""
     structlog.configure(
-        processors=[
+        processors=[  # ty: ignore[invalid-argument-type]
             structlog.stdlib.add_log_level,
             structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.UnicodeDecoder(),

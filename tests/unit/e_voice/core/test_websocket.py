@@ -47,7 +47,7 @@ async def test_base_websocket_on_close() -> None:
 async def test_base_websocket_on_invalid_event() -> None:
     ws = BaseWebSocket("/v1/test")
     with pytest.raises(ValueError, match="Invalid event type"):
-        ws.on("invalid")(lambda: "")
+        ws.on("invalid")(lambda: "")  # ty: ignore[invalid-argument-type]
 
 
 async def test_base_websocket_handlers_property() -> None:

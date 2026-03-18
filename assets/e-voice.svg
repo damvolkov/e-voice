@@ -1,4 +1,5 @@
 <svg viewBox="0 0 200 190" xmlns="http://www.w3.org/2000/svg">
+  <rect width="200" height="190" fill="#FFFFFF"/>
   <g transform="translate(30, 30)">
     <!-- E letterform -->
     <rect x="0" y="0" width="16" height="130" fill="#2D2D2A"/>

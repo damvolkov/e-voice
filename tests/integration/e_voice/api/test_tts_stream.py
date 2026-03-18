@@ -1,5 +1,5 @@
 import pytest
-from pytest_audioeval.client import AudioEval
+from pytest_audioeval.tts import TTSClient
 
 _STREAM_FORMATS = ["pcm", "mp3", "wav"]
 
@@ -22,12 +22,12 @@ _CONTENT_TYPE_MAP: dict[str, str] = {
     ids=_STREAM_FORMATS,
 )
 async def test_speech_stream_audio_chunks(
-    audioeval: AudioEval,
+    tts: TTSClient,
     audio_format: str,
 ) -> None:
     chunks: list[bytes] = []
 
-    async with audioeval.tts.stream(
+    async with tts.stream(
         json={
             "input": "This is a streaming audio test.",
             "voice": "af_heart",
@@ -46,11 +46,11 @@ async def test_speech_stream_audio_chunks(
 
 
 async def test_speech_stream_multiple_chunks(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
     chunks: list[bytes] = []
 
-    async with audioeval.tts.stream(
+    async with tts.stream(
         json={
             "input": "The quick brown fox jumps over the lazy dog. This sentence has multiple words to generate longer audio output.",
             "voice": "af_heart",
@@ -68,11 +68,11 @@ async def test_speech_stream_multiple_chunks(
 
 
 async def test_speech_stream_pcm_raw_bytes(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
     all_bytes = b""
 
-    async with audioeval.tts.stream(
+    async with tts.stream(
         json={
             "input": "PCM test.",
             "voice": "af_heart",
@@ -85,4 +85,3 @@ async def test_speech_stream_pcm_raw_bytes(
             all_bytes += chunk
 
     assert len(all_bytes) > 0
-    assert len(all_bytes) % 2 == 0

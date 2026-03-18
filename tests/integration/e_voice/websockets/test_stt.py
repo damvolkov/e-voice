@@ -1,32 +1,53 @@
 import asyncio
 
 import orjson
-from pytest_audioeval.client import AudioEval
+from pytest_audioeval.stt import AudioEncoding, STTClient
 
 ##### WS /v1/audio/transcriptions #####
 
 
 async def test_ws_transcription_json_format(
-    audioeval: AudioEval,
+    stt: STTClient,
     en_sample,
 ) -> None:
-    async with audioeval.stt.ws(sample=en_sample) as session:
-        await session.send_sample(en_sample, chunk_ms=200)
-        await asyncio.sleep(2)
+    async with stt.ws(sample=en_sample, params={"language": "en", "response_format": "json"}) as session:
+        await session.send_sample(en_sample, chunk_ms=200, encoding=AudioEncoding.PCM16_BASE64)
+        await session.send_text("END_OF_AUDIO")
+        await asyncio.sleep(1)
 
-        result = session.result()
+        texts: list[str] = []
+        while True:
+            try:
+                text = await session.receive_text(timeout=2.0)
+            except Exception:
+                break
+            if not text.strip():
+                continue
+            texts.append(text)
 
-    assert len(result.hypothesis_text.strip()) > 0
+    assert len(texts) > 0
+    body = orjson.loads(texts[-1])
+    assert "text" in body
 
 
 async def test_ws_transcription_quality(
-    audioeval: AudioEval,
+    stt: STTClient,
     en_sample,
     audioeval_thresholds: dict[str, float],
 ) -> None:
-    async with audioeval.stt.ws(sample=en_sample) as session:
-        await session.send_sample(en_sample, chunk_ms=200)
-        await asyncio.sleep(3)
+    async with stt.ws(
+        sample=en_sample,
+        params={"language": "en", "response_format": "text"},
+    ) as session:
+        await session.send_sample(en_sample, chunk_ms=200, encoding=AudioEncoding.PCM16_BASE64)
+        await session.send_text("END_OF_AUDIO")
+        await asyncio.sleep(1)
+
+        while True:
+            try:
+                await session.receive_text(timeout=2.0)
+            except Exception:
+                break
 
         result = session.result()
 
@@ -38,15 +59,22 @@ async def test_ws_transcription_quality(
 
 
 async def test_ws_transcription_text_format(
-    audioeval: AudioEval,
+    stt: STTClient,
     en_sample,
 ) -> None:
-    async with audioeval.stt.ws(
+    async with stt.ws(
         sample=en_sample,
         params={"response_format": "text"},
     ) as session:
-        await session.send_sample(en_sample, chunk_ms=200)
-        await asyncio.sleep(2)
+        await session.send_sample(en_sample, chunk_ms=200, encoding=AudioEncoding.PCM16_BASE64)
+        await session.send_text("END_OF_AUDIO")
+        await asyncio.sleep(1)
+
+        while True:
+            try:
+                await session.receive_text(timeout=2.0)
+            except Exception:
+                break
 
         result = session.result()
 
@@ -54,34 +82,50 @@ async def test_ws_transcription_text_format(
 
 
 async def test_ws_transcription_verbose_json_format(
-    audioeval: AudioEval,
+    stt: STTClient,
     en_sample,
 ) -> None:
-    async with audioeval.stt.ws(
+    async with stt.ws(
         sample=en_sample,
         params={"response_format": "verbose_json"},
     ) as session:
-        await session.send_sample(en_sample, chunk_ms=200)
-        await asyncio.sleep(2)
+        await session.send_sample(en_sample, chunk_ms=200, encoding=AudioEncoding.PCM16_BASE64)
+        await session.send_text("END_OF_AUDIO")
+        await asyncio.sleep(1)
 
-        text = await session.receive_text(timeout=5.0)
+        texts: list[str] = []
+        while True:
+            try:
+                text = await session.receive_text(timeout=2.0)
+            except Exception:
+                break
+            if not text.strip():
+                continue
+            texts.append(text)
 
-    body = orjson.loads(text)
+    assert len(texts) > 0
+    body = orjson.loads(texts[-1])
     assert "text" in body
-    assert "segments" in body
-    assert "language" in body
+    assert "partial" in body
 
 
 async def test_ws_transcription_with_language(
-    audioeval: AudioEval,
+    stt: STTClient,
     es_sample,
 ) -> None:
-    async with audioeval.stt.ws(
+    async with stt.ws(
         sample=es_sample,
-        params={"language": "es"},
+        params={"language": "es", "response_format": "text"},
     ) as session:
-        await session.send_sample(es_sample, chunk_ms=200)
-        await asyncio.sleep(2)
+        await session.send_sample(es_sample, chunk_ms=200, encoding=AudioEncoding.PCM16_BASE64)
+        await session.send_text("END_OF_AUDIO")
+        await asyncio.sleep(1)
+
+        while True:
+            try:
+                await session.receive_text(timeout=2.0)
+            except Exception:
+                break
 
         result = session.result()
 
@@ -89,15 +133,25 @@ async def test_ws_transcription_with_language(
 
 
 async def test_ws_transcription_text_message_ignored(
-    audioeval: AudioEval,
+    stt: STTClient,
     en_sample,
 ) -> None:
-    async with audioeval.stt.ws(sample=en_sample) as session:
+    async with stt.ws(
+        sample=en_sample,
+        params={"response_format": "text"},
+    ) as session:
         await session.send_text("this is not audio")
         await asyncio.sleep(0.5)
 
-        await session.send_sample(en_sample, chunk_ms=200)
-        await asyncio.sleep(2)
+        await session.send_sample(en_sample, chunk_ms=200, encoding=AudioEncoding.PCM16_BASE64)
+        await session.send_text("END_OF_AUDIO")
+        await asyncio.sleep(1)
+
+        while True:
+            try:
+                await session.receive_text(timeout=2.0)
+            except Exception:
+                break
 
         result = session.result()
 
@@ -105,12 +159,22 @@ async def test_ws_transcription_text_message_ignored(
 
 
 async def test_ws_transcription_multiple_chunks(
-    audioeval: AudioEval,
+    stt: STTClient,
     en_counting_sample,
 ) -> None:
-    async with audioeval.stt.ws(sample=en_counting_sample) as session:
-        await session.send_sample(en_counting_sample, chunk_ms=100)
-        await asyncio.sleep(3)
+    async with stt.ws(
+        sample=en_counting_sample,
+        params={"response_format": "text"},
+    ) as session:
+        await session.send_sample(en_counting_sample, chunk_ms=100, encoding=AudioEncoding.PCM16_BASE64)
+        await session.send_text("END_OF_AUDIO")
+        await asyncio.sleep(2)
+
+        while True:
+            try:
+                await session.receive_text(timeout=2.0)
+            except Exception:
+                break
 
         result = session.result()
 

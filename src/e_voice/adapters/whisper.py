@@ -1,8 +1,9 @@
 """Faster-whisper adapter — model lifecycle, transcription, translation, streaming."""
 
 import asyncio
+import functools
 import threading
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
 from typing import Literal
 
@@ -16,7 +17,7 @@ from ovld import ovld
 from e_voice.adapters.base import BaseModelAdapter
 from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
-from e_voice.core.settings import STTConfig, VADConfig, resolve_compute_type
+from e_voice.core.settings import ComputeType, DeviceType, STTConfig, VADConfig, resolve_compute_type
 from e_voice.core.settings import settings as st
 from e_voice.models.stt import InferenceParams, ModelSpec
 from e_voice.models.transcription import (
@@ -104,7 +105,7 @@ def build_response(
     seg_models = [segment_to_model(s, word_timestamps) for s in segments]
     all_words = [w for s in seg_models if s.words for w in s.words] if word_timestamps else None
     resp = TranscriptionVerboseResponse(
-        task=task,
+        task=task,  # ty: ignore[invalid-argument-type]
         language=info.language,
         duration=Audio.duration(audio),
         text=text,
@@ -157,7 +158,7 @@ def segment_to_model(seg: Segment, word_timestamps: bool = False) -> Transcripti
         end=seg.end,
         text=seg.text,
         tokens=list(seg.tokens),
-        temperature=seg.temperature,
+        temperature=seg.temperature or 0.0,
         avg_logprob=seg.avg_logprob,
         compression_ratio=seg.compression_ratio,
         no_speech_prob=seg.no_speech_prob,
@@ -214,14 +215,16 @@ class WhisperAdapter(BaseModelAdapter):
         """Download model from HuggingFace Hub (thread-offloaded)."""
         logger.info("⬇️ MODEL_DOWNLOADING", extra={"model": model_id})
         path = await asyncio.to_thread(
-            snapshot_download,
-            repo_id=model_id,
-            repo_type="model",
-            local_dir=str(st.MODELS_PATH / "stt" / model_id.replace("/", "--")),
-            allow_patterns=st.stt.hf_allow_patterns,
+            functools.partial(
+                snapshot_download,
+                repo_id=model_id,
+                repo_type="model",
+                local_dir=str(st.MODELS_PATH / "stt" / model_id.replace("/", "--")),
+                allow_patterns=st.stt.hf_allow_patterns,
+            )
         )
         logger.info("✅ MODEL_DOWNLOADED", extra={"model": model_id, "path": path})
-        return Path(path)
+        return Path(str(path))
 
     # ── Batch Inference ────────────────────────────────────────────────
 
@@ -345,7 +348,7 @@ class WhisperAdapter(BaseModelAdapter):
         audio: NDArray[np.float32],
         task: Task,
         params: InferenceParams,
-    ) -> tuple[object, TranscriptionInfo]:
+    ) -> tuple[Iterable[Segment], TranscriptionInfo]:
         """Call model.transcribe. Caller MUST hold _gpu_lock."""
         use_vad = params.vad_filter or self._vad_config.enabled
         return model.transcribe(
@@ -369,7 +372,7 @@ class WhisperAdapter(BaseModelAdapter):
             spec.model_id,
             device=spec.device,
             device_index=self._config.device_index,
-            compute_type=str(resolve_compute_type(spec.device, spec.compute_type)),
+            compute_type=str(resolve_compute_type(DeviceType(spec.device), ComputeType(spec.compute_type))),
             cpu_threads=self._config.cpu_threads,
             num_workers=self._config.num_workers,
             download_root=str(st.MODELS_PATH / "stt"),

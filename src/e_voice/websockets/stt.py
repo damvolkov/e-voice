@@ -55,11 +55,17 @@ def on_connect(ws: WebSocketConnector, global_dependencies) -> str:
 
 @ws_stt.on("message")
 async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> str:
-    """Receive base64 PCM16 chunk, process through streaming pipeline."""
+    """Receive base64 PCM16 chunk or END_OF_AUDIO signal."""
     try:
         state = global_dependencies.get("state")
         if (session := state.stt_sessions.get(ws.id)) is None:
             return orjson.dumps({"error": "no session"}).decode()
+
+        if msg.strip() == "END_OF_AUDIO":
+            event = flush_session(session)
+            if event.new_confirmed:
+                logger.info(event.new_confirmed, step="STT", final=True)
+            return format_event(event, session.response_format)
 
         whisper = state.whisper
 

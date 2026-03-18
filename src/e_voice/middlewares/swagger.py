@@ -65,7 +65,7 @@ class SwaggerBrandingMiddleware(BaseMiddleware):
 
     def after(self, response: Response) -> Response:
         """Patch Swagger HTML with e-voice branding."""
-        html = response.description
+        html = str(response.description)
         html = html.replace(_ROBYN_FAVICON, _FAVICON_URI)
         html = html.replace('type="image/png"', 'type="image/svg+xml"')
         html = html.replace("Robyn OpenAPI Docs", "e-voice API")

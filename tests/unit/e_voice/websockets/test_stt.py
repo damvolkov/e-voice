@@ -1,10 +1,12 @@
 """Unit tests for websockets/stt.py — streaming STT handlers."""
 
+import base64
 from dataclasses import dataclass, field
 
 import numpy as np
 import orjson
 
+from e_voice.streaming.transcriber import SessionState, StreamingEvent, StreamingEventType
 from e_voice.websockets.stt import format_event, on_close, on_connect, on_message
 
 ##### FIXTURES #####
@@ -17,19 +19,19 @@ class MockWSConnector:
 
 
 @dataclass
+class _FakeEnum:
+    value: str = "json"
+
+
+@dataclass
 class MockSTTConfig:
     default_language: str | None = None
-    default_response_format: type = field(default=None)
+    default_response_format: _FakeEnum | None = field(default=None)
     model: str = "Systran/faster-whisper-small"
 
     def __post_init__(self) -> None:
         if self.default_response_format is None:
-
-            @dataclass
-            class FakeEnum:
-                value: str = "json"
-
-            self.default_response_format = FakeEnum()
+            self.default_response_format = _FakeEnum()
 
 
 @dataclass
@@ -50,8 +52,6 @@ class MockGlobalDeps:
 
 
 async def test_format_event_json() -> None:
-    from e_voice.streaming.transcriber import StreamingEvent, StreamingEventType
-
     event = StreamingEvent(
         type=StreamingEventType.TRANSCRIPT_UPDATE,
         confirmed_text="Hello",
@@ -67,8 +67,6 @@ async def test_format_event_json() -> None:
 
 
 async def test_format_event_text() -> None:
-    from e_voice.streaming.transcriber import StreamingEvent, StreamingEventType
-
     event = StreamingEvent(
         type=StreamingEventType.TRANSCRIPT_UPDATE,
         confirmed_text="Hello world",
@@ -132,8 +130,6 @@ async def test_on_message_no_session() -> None:
 
 
 async def test_on_message_processes_audio(mocker) -> None:
-    from e_voice.streaming.transcriber import SessionState, StreamingEvent, StreamingEventType
-
     session = SessionState(language="en", model_id="tiny", response_format="json")
     state = MockState(stt_sessions={"ws-001": session}, whisper=mocker.MagicMock())
     deps = MockGlobalDeps(state)
@@ -147,8 +143,6 @@ async def test_on_message_processes_audio(mocker) -> None:
     mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=event)
 
     pcm_samples = np.zeros(160, dtype=np.int16)
-    import base64
-
     msg = base64.b64encode(pcm_samples.tobytes()).decode()
 
     result = await on_message(MockWSConnector(), msg, deps)
@@ -157,8 +151,6 @@ async def test_on_message_processes_audio(mocker) -> None:
 
 
 async def test_on_message_returns_empty_on_none_event(mocker) -> None:
-    from e_voice.streaming.transcriber import SessionState
-
     session = SessionState(language="en", model_id="tiny", response_format="json")
     state = MockState(stt_sessions={"ws-001": session}, whisper=mocker.MagicMock())
     deps = MockGlobalDeps(state)
@@ -166,23 +158,17 @@ async def test_on_message_returns_empty_on_none_event(mocker) -> None:
     mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=None)
 
     pcm_samples = np.zeros(160, dtype=np.int16)
-    import base64
-
     msg = base64.b64encode(pcm_samples.tobytes()).decode()
     result = await on_message(MockWSConnector(), msg, deps)
     assert result == ""
 
 
 async def test_on_message_handles_exception(mocker) -> None:
-    from e_voice.streaming.transcriber import SessionState
-
     session = SessionState(language="en", model_id="tiny", response_format="json")
     state = MockState(stt_sessions={"ws-001": session}, whisper=mocker.MagicMock())
     deps = MockGlobalDeps(state)
 
     mocker.patch("e_voice.websockets.stt.process_audio_chunk", side_effect=RuntimeError("boom"))
-
-    import base64
 
     msg = base64.b64encode(b"\x00" * 320).decode()
     result = await on_message(MockWSConnector(), msg, deps)
@@ -194,8 +180,6 @@ async def test_on_message_handles_exception(mocker) -> None:
 
 
 async def test_on_close_flushes_session(mocker) -> None:
-    from e_voice.streaming.transcriber import SessionState, StreamingEvent, StreamingEventType
-
     session = SessionState(language="en", model_id="tiny", response_format="json")
     state = MockState(stt_sessions={"ws-001": session})
     deps = MockGlobalDeps(state)

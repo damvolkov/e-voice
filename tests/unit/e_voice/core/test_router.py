@@ -157,6 +157,7 @@ async def test_parse_response_pydantic_to_json() -> None:
     model = SampleModel(name="test", value=123)
     result = parse_response(model)
 
+    assert isinstance(result, Response)
     assert result.status_code == 200
     assert result.headers["content-type"] == "application/json"
     assert "test" in str(result.description)
@@ -165,7 +166,7 @@ async def test_parse_response_pydantic_to_json() -> None:
 
 async def test_parse_response_dict_to_json() -> None:
     result = parse_response({"key": "value", "num": 42})
-
+    assert isinstance(result, Response)
     assert result.status_code == 200
     assert result.headers["content-type"] == "application/json"
     assert "key" in str(result.description)
@@ -173,6 +174,7 @@ async def test_parse_response_dict_to_json() -> None:
 
 async def test_parse_response_other_to_string() -> None:
     result = parse_response("plain text")
+    assert isinstance(result, Response)
     assert result.status_code == 200
     assert result.description == "plain text"
 
@@ -221,14 +223,14 @@ async def test_upload_file_get() -> None:
 
 
 async def test_parse_request_files_empty_params() -> None:
-    assert parse_request_files(set(), None, {}) is None
+    assert parse_request_files(set(), None, {}) is None  # ty: ignore[invalid-argument-type]
 
 
 async def test_parse_request_files_missing_files() -> None:
     class FakeRequest:
         files = None
 
-    error = parse_request_files({"audio"}, FakeRequest(), {})
+    error = parse_request_files({"audio"}, FakeRequest(), {})  # ty: ignore[invalid-argument-type]
     assert isinstance(error, Response)
     assert error.status_code == 422
 
@@ -237,7 +239,7 @@ async def test_parse_request_files_no_files_attr() -> None:
     class FakeRequest:
         pass
 
-    error = parse_request_files({"audio"}, FakeRequest(), {})
+    error = parse_request_files({"audio"}, FakeRequest(), {})  # ty: ignore[invalid-argument-type]
     assert isinstance(error, Response)
     assert error.status_code == 422
 
@@ -247,7 +249,7 @@ async def test_parse_request_files_success() -> None:
         files = [("audio.wav", b"fake audio bytes")]
 
     kwargs: dict = {}
-    result = parse_request_files({"audio"}, FakeRequest(), kwargs)
+    result = parse_request_files({"audio"}, FakeRequest(), kwargs)  # ty: ignore[invalid-argument-type]
     assert result is None
     assert "audio" in kwargs
     assert isinstance(kwargs["audio"], UploadFile)
@@ -283,7 +285,7 @@ async def test_create_method_wrapper_registers_handler() -> None:
 
     @wrapped("/users")
     async def handler(body: SampleModel) -> None:
-        return {"ok": True}
+        return {"ok": True}  # ty: ignore[invalid-return-type]
 
     assert len(calls) == 1
     assert calls[0][0] == "/users"

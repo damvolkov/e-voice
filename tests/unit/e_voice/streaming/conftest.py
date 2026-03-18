@@ -18,12 +18,12 @@ class MockSegment:
     start: float = 0.0
     end: float = 1.0
     text: str = ""
-    tokens: list[int] = None
+    tokens: list[int] | None = None
     temperature: float = 0.0
     avg_logprob: float = -0.3
     compression_ratio: float = 1.2
     no_speech_prob: float = 0.1
-    words: list[MockSegmentWord] = None
+    words: list[MockSegmentWord] | None = None
 
     def __post_init__(self) -> None:
         if self.tokens is None:

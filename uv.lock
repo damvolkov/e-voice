@@ -402,7 +402,7 @@ dev = [
     { name = "pre-commit", specifier = ">=4.4.0" },
     { name = "pytest", specifier = ">=8.4.0" },
     { name = "pytest-asyncio", specifier = ">=1.0.0" },
-    { name = "pytest-audioeval", specifier = ">=0.1.2" },
+    { name = "pytest-audioeval", specifier = ">=0.1.3" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-httpserver", specifier = ">=1.1.5" },
     { name = "pytest-mock", specifier = ">=3.14.0" },
@@ -1363,7 +1363,7 @@ wheels = [
 
 [[package]]
 name = "pytest-audioeval"
-version = "0.1.2"
+version = "0.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1375,9 +1375,9 @@ dependencies = [
     { name = "pytest" },
     { name = "soundfile" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6e/5c/c5fb7f83f5aecafea478a0275ba1db483cfdb05fe565b2b6cf6c3e3ebe75/pytest_audioeval-0.1.2.tar.gz", hash = "sha256:3ac25f53c89f12ce3f5ca5b807cf014deae4199f484ebd0c00817df7a3ee4f96", size = 4049661, upload-time = "2026-03-13T11:44:16.92Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/35/94206d6312efb1049c9993f354e261e33540b55303d2c6bc4bc879845341/pytest_audioeval-0.1.3.tar.gz", hash = "sha256:e37654bc869b8fbc092f17bf826ece8421601f3f3de9f8fe9b23c6dfd2989011", size = 4050276, upload-time = "2026-03-18T13:32:04.024Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/a0/6cb62468b711ba2b1ab4f3d4323f238cf8c6a65120633ea6eebdf8eaac06/pytest_audioeval-0.1.2-py3-none-any.whl", hash = "sha256:8a768f0f6b7b8b1cf3525f09ced621541af0c6e4bf9fef96d8716e43e121a334", size = 3959481, upload-time = "2026-03-13T11:44:14.757Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/3f/bbe9ff3c5aa09abfebdda827cf7c98ec7c8ae030043ba3dc79a03415fea1/pytest_audioeval-0.1.3-py3-none-any.whl", hash = "sha256:8b97369347232d43180dd9860189c547ccc8dedb42b7c21d511ddc5a05ef7ecc", size = 3959807, upload-time = "2026-03-18T13:32:08.377Z" },
 ]
 
 [[package]]

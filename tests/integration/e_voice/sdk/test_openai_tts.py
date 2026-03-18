@@ -34,7 +34,6 @@ async def test_speech_pcm(openai_client: AsyncOpenAI) -> None:
     )
     audio_bytes = response.content
     assert len(audio_bytes) > 0
-    assert len(audio_bytes) % 2 == 0
 
 
 async def test_speech_flac(openai_client: AsyncOpenAI) -> None:

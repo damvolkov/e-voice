@@ -1,6 +1,7 @@
 """Router with automatic body parsing, validation and response handling."""
 
 import inspect
+import re
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -9,9 +10,11 @@ import orjson
 from pydantic import BaseModel, ValidationError
 from robyn import Request, Response, StreamingResponse, SubRouter, status_codes
 from robyn.robyn import HttpMethod
-from robyn.types import Body
+from robyn.types import Body, PathParams
 
 from e_voice.models.core import BodyType, UploadFile
+
+_PATH_PARAM_RE = re.compile(r":(\w+)")
 
 FILE_UPLOAD_ENDPOINTS: set[str] = set()
 
@@ -60,12 +63,24 @@ def parse_request_body(
                 try:
                     kwargs[param_name] = model_cls.model_validate_json(raw)  # type: ignore[union-attr]
                 except ValidationError as ex:
-                    return Response(status_code=422, headers={}, description=ex.json())
+                    return Response(
+                        status_code=status_codes.HTTP_422_UNPROCESSABLE_ENTITY,
+                        headers={"content-type": "application/json"},
+                        description=orjson.dumps(
+                            {"error": {"message": str(ex), "type": "invalid_request_error"}}
+                        ).decode(),
+                    )
             case BodyType.JSONABLE:
                 try:
                     kwargs[param_name] = orjson.loads(raw)
                 except orjson.JSONDecodeError as ex:
-                    return Response(status_code=422, headers={}, description=str(ex))
+                    return Response(
+                        status_code=status_codes.HTTP_422_UNPROCESSABLE_ENTITY,
+                        headers={"content-type": "application/json"},
+                        description=orjson.dumps(
+                            {"error": {"message": str(ex), "type": "invalid_request_error"}}
+                        ).decode(),
+                    )
             case BodyType.RAW:
                 pass
     return None
@@ -149,13 +164,18 @@ def _create_method_wrapper(
             sig = inspect.signature(handler)
             body_config, file_params = parse_endpoint_signature(sig)
             has_request_param = "request" in sig.parameters
+            path_param_names = frozenset(_PATH_PARAM_RE.findall(endpoint)) & set(sig.parameters)
 
             if file_params:
                 full_path = f"{router_prefix}{endpoint}".replace("//", "/")
                 FILE_UPLOAD_ENDPOINTS.add(full_path)
 
             @wraps(handler)
-            async def wrapped_handler(request: Request, **h_kwargs):
+            async def wrapped_handler(request: Request, path_params: PathParams | None = None, **h_kwargs):
+                if path_param_names and path_params:
+                    for pp_name in path_param_names:
+                        h_kwargs[pp_name] = path_params.get(pp_name, "")
+
                 if error := parse_request_body(body_config, h_kwargs):
                     return error
 
@@ -168,9 +188,15 @@ def _create_method_wrapper(
                 result = await handler(**h_kwargs)
                 return parse_response(result)
 
-            new_params = [inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request)]
+            new_params = [
+                inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
+            ]
+            if path_param_names:
+                new_params.append(
+                    inspect.Parameter("path_params", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=PathParams)
+                )
             for name, param in sig.parameters.items():
-                if name == "request" or name in file_params:
+                if name == "request" or name in file_params or name in path_param_names:
                     continue
                 if name in body_config:
                     new_params.append(param.replace(annotation=body_config[name][1]))

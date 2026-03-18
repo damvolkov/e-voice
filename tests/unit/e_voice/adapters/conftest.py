@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from faster_whisper.transcribe import Segment, TranscriptionInfo
+from faster_whisper.transcribe import Segment, TranscriptionInfo, Word
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def segment() -> Segment:
         start=0.0,
         end=1.0,
         text=" hello",
-        tokens=(1, 2, 3),
+        tokens=[1, 2, 3],
         avg_logprob=-0.3,
         compression_ratio=1.2,
         no_speech_prob=0.1,
@@ -30,15 +30,13 @@ def segment() -> Segment:
 
 @pytest.fixture
 def segment_with_words() -> Segment:
-    from faster_whisper.transcribe import Word
-
     return Segment(
         id=0,
         seek=0,
         start=0.0,
         end=1.0,
         text=" hello world",
-        tokens=(1, 2, 3),
+        tokens=[1, 2, 3],
         avg_logprob=-0.3,
         compression_ratio=1.2,
         no_speech_prob=0.1,
@@ -58,8 +56,8 @@ def info() -> TranscriptionInfo:
         duration=1.0,
         duration_after_vad=1.0,
         all_language_probs=None,
-        transcription_options=None,
-        vad_options=None,
+        transcription_options=None,  # ty: ignore[invalid-argument-type]
+        vad_options=None,  # ty: ignore[invalid-argument-type]
     )
 
 
@@ -76,7 +74,7 @@ def make_segment(
         start=start,
         end=end,
         text=text,
-        tokens=(1, 2, 3),
+        tokens=[1, 2, 3],
         avg_logprob=-0.3,
         compression_ratio=1.2,
         no_speech_prob=no_speech_prob,

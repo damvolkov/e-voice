@@ -1,20 +1,31 @@
 import asyncio
 
 import httpx
-from pytest_audioeval.client import AudioEval
+from pytest_audioeval.stt import AudioEncoding, STTClient
 
 ##### CONCURRENT STT #####
 
 
 async def test_concurrent_stt_transcriptions(
-    audioeval: AudioEval,
+    stt: STTClient,
     en_sample,
     es_sample,
 ) -> None:
     async def transcribe(sample, params=None):
-        async with audioeval.stt.ws(sample=sample, **({"params": params} if params else {})) as session:
-            await session.send_sample(sample, chunk_ms=200)
-            await asyncio.sleep(3)
+        ws_params = {"response_format": "text"}
+        if params:
+            ws_params.update(params)
+        async with stt.ws(sample=sample, params=ws_params) as session:
+            await session.send_sample(sample, chunk_ms=200, encoding=AudioEncoding.PCM16_BASE64)
+            await session.send_text("END_OF_AUDIO")
+            await asyncio.sleep(2)
+
+            while True:
+                try:
+                    await session.receive_text(timeout=2.0)
+                except Exception:
+                    break
+
             return session.result()
 
     results = await asyncio.gather(
@@ -50,14 +61,25 @@ async def test_concurrent_tts_requests(http_client: httpx.AsyncClient) -> None:
 
 
 async def test_concurrent_stt_and_tts(
-    audioeval: AudioEval,
+    stt: STTClient,
     en_sample,
     http_client: httpx.AsyncClient,
 ) -> None:
     async def transcribe():
-        async with audioeval.stt.ws(sample=en_sample) as session:
-            await session.send_sample(en_sample, chunk_ms=200)
-            await asyncio.sleep(3)
+        async with stt.ws(
+            sample=en_sample,
+            params={"response_format": "text"},
+        ) as session:
+            await session.send_sample(en_sample, chunk_ms=200, encoding=AudioEncoding.PCM16_BASE64)
+            await session.send_text("END_OF_AUDIO")
+            await asyncio.sleep(2)
+
+            while True:
+                try:
+                    await session.receive_text(timeout=2.0)
+                except Exception:
+                    break
+
             return session.result()
 
     async def synthesize():

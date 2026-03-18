@@ -99,6 +99,7 @@ async def test_transcription_segment() -> None:
 async def test_transcription_segment_with_words() -> None:
     words = [TranscriptionWord(start=0.0, end=0.5, word="hello")]
     seg = TranscriptionSegment(id=0, seek=0, start=0.0, end=1.0, text="hello", words=words)
+    assert seg.words is not None
     assert len(seg.words) == 1
 
 

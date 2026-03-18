@@ -72,6 +72,7 @@ class Audio:
 
         output = av.open(buf, mode="w", format=container_fmt)
         stream = output.add_stream(codec_name, rate=sample_rate, layout="mono")
+        assert isinstance(stream, av.AudioStream)
         for k, v in codec_opts.items():
             setattr(stream, k, v) if hasattr(stream, k) else stream.options.update({k: v})
 

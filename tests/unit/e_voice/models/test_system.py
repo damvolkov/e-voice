@@ -1,9 +1,9 @@
 """Unit tests for models/system.py — system API DTOs."""
 
+from e_voice.models.error import ErrorResponse
 from e_voice.models.system import (
     DownloadRequest,
     DownloadResponse,
-    ErrorResponse,
     ModelEntry,
     ModelsListResponse,
     ServiceType,

@@ -1,7 +1,9 @@
+import ctypes
 import multiprocessing
 import socket
 import time
 from contextlib import suppress
+from pathlib import Path
 
 import httpx
 import pytest
@@ -20,10 +22,6 @@ def _find_free_port() -> int:
 
 def _preload_nvidia_libs() -> None:
     """Preload NVIDIA CUDA shared libs from venv via ctypes (dlopen with full path)."""
-    import ctypes
-    from contextlib import suppress
-    from pathlib import Path
-
     venv = Path(__file__).resolve().parents[2] / ".venv" / "lib"
     for so in venv.glob("python*/site-packages/nvidia/*/lib/*.so.*"):
         with suppress(OSError):

@@ -3,7 +3,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 import pytest
 
-from e_voice.events.process_pool import create_process_pool, process_pool_context
+from e_voice.events.process_pool import ProcessPoolEvent, create_process_pool, process_pool_context
 
 
 def _cpu_bound_task(x: int) -> int:
@@ -71,8 +71,6 @@ def test_create_process_pool_respects_max_workers(workers: int) -> None:
 
 
 async def test_process_pool_event_startup(mocker) -> None:
-    from e_voice.events.process_pool import ProcessPoolEvent
-
     mocker.patch("e_voice.events.process_pool.st", mocker.MagicMock(system=mocker.MagicMock(max_workers=2)))
     event = ProcessPoolEvent()
     pool = await event.startup()
@@ -83,8 +81,6 @@ async def test_process_pool_event_startup(mocker) -> None:
 
 
 async def test_process_pool_event_shutdown() -> None:
-    from e_voice.events.process_pool import ProcessPoolEvent
-
     event = ProcessPoolEvent()
     pool = create_process_pool(max_workers=1)
     await event.shutdown(pool)

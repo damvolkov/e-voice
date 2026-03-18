@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 import httpx
 import orjson
 
@@ -38,7 +40,7 @@ async def test_get_model_loaded(http_client: httpx.AsyncClient) -> None:
     assert len(models) > 0
 
     model_id = models[0]["id"]
-    response = await http_client.get(f"/v1/models/{model_id}")
+    response = await http_client.get(f"/v1/models/{quote(model_id, safe='')}")
     assert response.status_code == 200
 
     body = orjson.loads(response.content)
@@ -75,7 +77,7 @@ async def test_load_model_already_loaded_returns_409(http_client: httpx.AsyncCli
     assert len(models) > 0
 
     model_id = models[0]
-    response = await http_client.post(f"/v1/api/ps/{model_id}")
+    response = await http_client.post(f"/v1/api/ps/{quote(model_id, safe='')}")
     assert response.status_code == 409
 
     body = orjson.loads(response.content)

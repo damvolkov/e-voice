@@ -13,6 +13,7 @@ from e_voice.adapters.whisper import (
     segment_to_model,
 )
 from e_voice.core.settings import ComputeType, DeviceType, STTConfig
+from e_voice.core.settings import settings as st
 from e_voice.models.stt import InferenceParams, ModelSpec
 
 ##### MODEL SPEC #####
@@ -21,7 +22,7 @@ from e_voice.models.stt import InferenceParams, ModelSpec
 async def test_model_spec_frozen() -> None:
     spec = ModelSpec(model_id="test", device="cuda", compute_type="float16")
     with pytest.raises(AttributeError):
-        spec.model_id = "other"
+        spec.model_id = "other"  # ty: ignore[invalid-assignment]
 
 
 async def test_model_spec_defaults() -> None:
@@ -62,7 +63,7 @@ async def test_inference_params_defaults() -> None:
 async def test_inference_params_frozen() -> None:
     params = InferenceParams(language="en")
     with pytest.raises(AttributeError):
-        params.language = "es"
+        params.language = "es"  # ty: ignore[invalid-assignment]
 
 
 ##### ADAPTER INIT #####
@@ -137,8 +138,6 @@ async def test_resolve_raises_not_loaded() -> None:
 
 
 async def test_resolve_falls_back_to_default_config(mocker) -> None:
-    from e_voice.core.settings import settings as st
-
     config = STTConfig(device=DeviceType.CUDA, compute_type=ComputeType.FLOAT16)
     adapter = WhisperAdapter(config=config)
     spec = ModelSpec(model_id=st.stt.model, device="cuda", compute_type="float16")
@@ -169,7 +168,10 @@ async def test_transcribe_calls_model(mocker) -> None:
     mocker.patch.object(adapter, "_create_model", return_value=mock_model)
     await adapter.load(spec)
 
-    segments, info = await adapter.transcribe(np.zeros(16_000, dtype=np.float32), spec=spec)
+    result = await adapter.transcribe(np.zeros(16_000, dtype=np.float32), spec=spec)
+    segments, info = result
+    assert not isinstance(segments, str)
+    assert not isinstance(info, str)
     assert len(segments) == 1
     assert info.language == "en"
 
@@ -214,14 +216,16 @@ async def test_translate_formatted_verbose_json(mocker) -> None:
         duration=1.0,
         duration_after_vad=1.0,
         all_language_probs=None,
-        transcription_options=None,
-        vad_options=None,
+        transcription_options=None,  # ty: ignore[invalid-argument-type]
+        vad_options=None,  # ty: ignore[invalid-argument-type]
     )
     mock_model.transcribe.return_value = (iter([make_segment(text=" hola")]), real_info)
     mocker.patch.object(adapter, "_create_model", return_value=mock_model)
     await adapter.load(spec)
 
-    body, ct = await adapter.translate(np.zeros(16_000, dtype=np.float32), spec=spec, response_format="verbose_json")
+    result = await adapter.translate(np.zeros(16_000, dtype=np.float32), spec=spec, response_format="verbose_json")
+    body, ct = result
+    assert isinstance(body, str)
     assert ct == "application/json"
     parsed = orjson.loads(body)
     assert parsed["task"] == "translate"
@@ -279,7 +283,7 @@ async def test_transcribe_stream_yields_formatted_json(mocker) -> None:
     ids=["text", "json", "verbose_json", "srt", "vtt"],
 )
 async def test_format_segment_dispatch(segment: Segment, fmt: str, expected_substr: str) -> None:
-    result = format_segment(segment, fmt)
+    result = format_segment(segment, fmt)  # ty: ignore[no-matching-overload]
     assert expected_substr in result
 
 

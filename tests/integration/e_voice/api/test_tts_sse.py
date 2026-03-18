@@ -1,17 +1,17 @@
 import base64
 
 import orjson
-from pytest_audioeval.client import AudioEval
+from pytest_audioeval.tts import TTSClient
 
 ##### SSE /v1/audio/speech (stream_format=sse) #####
 
 
 async def test_speech_sse_yields_delta_events(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
     deltas: list[dict] = []
 
-    async with audioeval.tts.sse(
+    async with tts.sse(
         json={
             "input": "Hello world.",
             "voice": "af_heart",
@@ -19,7 +19,7 @@ async def test_speech_sse_yields_delta_events(
             "stream_format": "sse",
         },
     ) as event_source:
-        async for event in event_source:
+        async for event in event_source.aiter_sse():
             body = orjson.loads(event.data)
             deltas.append(body)
 
@@ -30,11 +30,11 @@ async def test_speech_sse_yields_delta_events(
 
 
 async def test_speech_sse_done_event(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
     events: list[dict] = []
 
-    async with audioeval.tts.sse(
+    async with tts.sse(
         json={
             "input": "Done event test.",
             "voice": "af_heart",
@@ -42,7 +42,7 @@ async def test_speech_sse_done_event(
             "stream_format": "sse",
         },
     ) as event_source:
-        async for event in event_source:
+        async for event in event_source.aiter_sse():
             events.append(orjson.loads(event.data))
 
     assert len(events) > 0
@@ -51,9 +51,9 @@ async def test_speech_sse_done_event(
 
 
 async def test_speech_sse_delta_audio_is_valid_base64(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
-    async with audioeval.tts.sse(
+    async with tts.sse(
         json={
             "input": "Base64 validation.",
             "voice": "af_heart",
@@ -61,7 +61,7 @@ async def test_speech_sse_delta_audio_is_valid_base64(
             "stream_format": "sse",
         },
     ) as event_source:
-        async for event in event_source:
+        async for event in event_source.aiter_sse():
             body = orjson.loads(event.data)
             if body.get("type") == "speech.audio.delta":
                 audio_bytes = base64.b64decode(body["audio"])
@@ -71,11 +71,11 @@ async def test_speech_sse_delta_audio_is_valid_base64(
 
 
 async def test_speech_sse_combined_audio_non_trivial(
-    audioeval: AudioEval,
+    tts: TTSClient,
 ) -> None:
     total_audio_bytes = 0
 
-    async with audioeval.tts.sse(
+    async with tts.sse(
         json={
             "input": "The quick brown fox jumps over the lazy dog.",
             "voice": "af_heart",
@@ -83,7 +83,7 @@ async def test_speech_sse_combined_audio_non_trivial(
             "stream_format": "sse",
         },
     ) as event_source:
-        async for event in event_source:
+        async for event in event_source.aiter_sse():
             body = orjson.loads(event.data)
             if body.get("type") == "speech.audio.delta":
                 audio_bytes = base64.b64decode(body["audio"])

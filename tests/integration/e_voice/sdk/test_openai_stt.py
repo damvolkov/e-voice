@@ -63,6 +63,7 @@ async def test_transcribe_quality(
         model="whisper",
         file=("audio.wav", en_sample.audio_bytes(), "audio/wav"),
         response_format="json",
+        language="en",
     )
     metrics = TextMetrics.compute(en_sample.reference_text, result.text)
     metrics.assert_quality(
