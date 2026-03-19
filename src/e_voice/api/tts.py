@@ -1,6 +1,6 @@
 """OpenAI-compatible Text-to-Speech API — speech synthesis, voice listing."""
 
-from robyn import Headers, Request, Response, SSEMessage, SSEResponse, StreamingResponse, status_codes
+from robyn import Request, Response, SSEMessage, SSEResponse, status_codes
 
 from e_voice.adapters.kokoro import KokoroAdapter
 from e_voice.core.audio import Audio
@@ -34,7 +34,7 @@ _CONTENT_TYPE_MAP: dict[str, str] = {
 
 @router.post("/audio/speech")
 async def speech(request: Request, body: SpeechRequest, global_dependencies):
-    """Synthesize speech from text (OpenAI-compatible). Supports HTTP, streaming, SSE."""
+    """Synthesize speech from text (OpenAI-compatible). Supports batch, SSE, and WebSocket."""
     kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
     fmt = body.response_format.value
     content_type = _CONTENT_TYPE_MAP.get(fmt, "application/octet-stream")
@@ -52,20 +52,10 @@ async def speech(request: Request, body: SpeechRequest, global_dependencies):
 
         return SSEResponse(sse_generator())
 
-    if body.stream:
-
-        async def audio_generator():
-            async for samples, sr in kokoro.synthesize_stream(body.input, params=params):
-                yield Audio.encode_chunk(samples, sr, fmt).decode("latin-1")
-
-        headers = Headers({"Content-Type": content_type})
-        return StreamingResponse(
-            audio_generator(),
-            status_code=status_codes.HTTP_200_OK,
-            headers=headers,
-            media_type=content_type,
-        )
-
+    # Robyn 0.72 StreamingResponse only accepts str — Rust layer re-encodes as UTF-8,
+    # corrupting binary audio (bytes ≥0x80 expand to 2-byte UTF-8 sequences).
+    # All HTTP binary audio goes through batch synthesis until Robyn adds bytes support.
+    # True incremental streaming available via SSE (base64) and WebSocket (binary frames).
     samples, sr = await kokoro.synthesize(body.input, params=params)
     audio_bytes = Audio.encode(samples, sr, fmt)
 
