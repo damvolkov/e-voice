@@ -164,7 +164,7 @@ async def test_ws_tts_concurrent_bursts(
             return_exceptions=True,
         )
         for r in batch:
-            results.append(str(r) if isinstance(r, Exception) else r)
+            results.append(str(r) if isinstance(r, BaseException) else r)
         if not await _health_ok(base_url):
             results.append("server_down")
             break

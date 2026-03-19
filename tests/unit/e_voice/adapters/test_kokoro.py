@@ -52,7 +52,7 @@ async def test_synthesis_params_defaults() -> None:
 async def test_synthesis_params_frozen() -> None:
     params = SynthesisParams()
     with pytest.raises(AttributeError):
-        params.voice = "bf_emma"
+        params.voice = "bf_emma"  # ty: ignore[invalid-assignment]
 
 
 ##### ONNX PROVIDER RESOLUTION #####
