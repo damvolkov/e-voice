@@ -5,10 +5,15 @@ import pytest
 from e_voice.core.settings import (
     ComputeType,
     DeviceType,
+    FrontConfig,
     Settings,
+    StreamingConfig,
     STTConfig,
+    SystemConfig,
     TTSConfig,
     VADConfig,
+    WebSocketConfig,
+    get_version,
     read_pyproject,
     resolve_compute_type,
 )
@@ -120,3 +125,65 @@ async def test_settings_stt_section() -> None:
 async def test_settings_api_url() -> None:
     s = Settings()
     assert s.api_url.startswith("http://")
+
+
+##### GET_VERSION #####
+
+
+async def test_get_version_returns_string() -> None:
+    version = get_version(Settings.BASE_DIR)
+    assert isinstance(version, str)
+    assert len(version) > 0
+
+
+async def test_get_version_fallback_on_bad_path() -> None:
+    version = get_version(Path("/nonexistent"))
+    assert isinstance(version, str)
+
+
+##### SYSTEM CONFIG #####
+
+
+async def test_system_config_defaults() -> None:
+    cfg = SystemConfig()
+    assert cfg.host == "0.0.0.0"
+    assert cfg.port == 5500
+    assert cfg.max_workers == 4
+    assert cfg.debug is True
+
+
+##### STREAMING CONFIG #####
+
+
+async def test_streaming_config_defaults() -> None:
+    cfg = StreamingConfig()
+    assert cfg.min_duration == 0.75
+    assert cfg.max_buffer_seconds == 45.0
+    assert cfg.same_output_threshold == 7
+
+
+##### WEBSOCKET CONFIG #####
+
+
+async def test_websocket_config_defaults() -> None:
+    cfg = WebSocketConfig()
+    assert cfg.port == 5700
+
+
+##### FRONT CONFIG #####
+
+
+async def test_front_config_defaults() -> None:
+    cfg = FrontConfig()
+    assert cfg.enabled is True
+    assert cfg.port == 5600
+    assert cfg.share is False
+
+
+##### RESOLVE_COMPUTE_TYPE — AUTO DEVICE #####
+
+
+async def test_resolve_compute_type_auto_without_ct2(mocker) -> None:
+    mocker.patch("e_voice.core.settings._HAS_CT2", False)
+    result = resolve_compute_type(DeviceType.AUTO, ComputeType.DEFAULT)
+    assert result == ComputeType.INT8

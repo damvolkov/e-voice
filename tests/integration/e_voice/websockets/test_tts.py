@@ -7,11 +7,11 @@ from pytest_audioeval.tts import TTSClient
 
 
 async def test_ws_speech_returns_audio_deltas(
-    tts: TTSClient,
+    tts_ws: TTSClient,
 ) -> None:
     events: list[dict] = []
 
-    async with tts.ws() as ws:
+    async with tts_ws.ws() as ws:
         await ws.send_text(orjson.dumps({"input": "Hello world.", "voice": "af_heart"}).decode())
 
         while True:
@@ -35,11 +35,11 @@ async def test_ws_speech_returns_audio_deltas(
 
 
 async def test_ws_speech_done_event(
-    tts: TTSClient,
+    tts_ws: TTSClient,
 ) -> None:
     events: list[dict] = []
 
-    async with tts.ws() as ws:
+    async with tts_ws.ws() as ws:
         await ws.send_text(orjson.dumps({"input": "Done event test.", "voice": "af_heart"}).decode())
 
         while True:
@@ -58,11 +58,11 @@ async def test_ws_speech_done_event(
 
 
 async def test_ws_speech_custom_voice_and_speed(
-    tts: TTSClient,
+    tts_ws: TTSClient,
 ) -> None:
     events: list[dict] = []
 
-    async with tts.ws() as ws:
+    async with tts_ws.ws() as ws:
         await ws.send_text(
             orjson.dumps(
                 {
@@ -90,9 +90,9 @@ async def test_ws_speech_custom_voice_and_speed(
 
 
 async def test_ws_speech_empty_input_returns_error(
-    tts: TTSClient,
+    tts_ws: TTSClient,
 ) -> None:
-    async with tts.ws() as ws:
+    async with tts_ws.ws() as ws:
         await ws.send_text(orjson.dumps({"input": "", "voice": "af_heart"}).decode())
 
         while not (text := await ws.receive_text(timeout=5.0)).strip():
@@ -104,9 +104,9 @@ async def test_ws_speech_empty_input_returns_error(
 
 
 async def test_ws_speech_invalid_json_returns_error(
-    tts: TTSClient,
+    tts_ws: TTSClient,
 ) -> None:
-    async with tts.ws() as ws:
+    async with tts_ws.ws() as ws:
         await ws.send_text("this is not json {{{")
 
         while not (text := await ws.receive_text(timeout=5.0)).strip():
@@ -118,11 +118,11 @@ async def test_ws_speech_invalid_json_returns_error(
 
 
 async def test_ws_speech_binary_message_ignored(
-    tts: TTSClient,
+    tts_ws: TTSClient,
 ) -> None:
     events: list[dict] = []
 
-    async with tts.ws() as ws:
+    async with tts_ws.ws() as ws:
         await ws.send_bytes(b"\x00\x01\x02\x03")
 
         await ws.send_text(orjson.dumps({"input": "After binary.", "voice": "af_heart"}).decode())
@@ -144,11 +144,11 @@ async def test_ws_speech_binary_message_ignored(
 
 
 async def test_ws_speech_combined_audio_non_trivial(
-    tts: TTSClient,
+    tts_ws: TTSClient,
 ) -> None:
     total_audio_bytes = 0
 
-    async with tts.ws() as ws:
+    async with tts_ws.ws() as ws:
         await ws.send_text(
             orjson.dumps(
                 {

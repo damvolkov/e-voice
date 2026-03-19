@@ -268,3 +268,63 @@ async def test_server_port_property() -> None:
 
     server = WebSocketServer(port=5700)
     assert server.port == 5700
+
+
+async def test_server_dispatch_calls_handler(mocker) -> None:
+    from uuid import UUID
+
+    from e_voice.core.websocket import WebSocketServer
+
+    handler = mocker.AsyncMock()
+    server = WebSocketServer(port=9999)
+    server._routes = {"/v1/test": handler}
+    server._state = mocker.MagicMock()
+
+    mock_ws = mocker.AsyncMock()
+    mock_ws.request.path = "/v1/test?lang=es"
+    mock_ws.id = UUID("12345678123456781234567812345678")
+
+    await server._dispatch(mock_ws)
+
+    handler.assert_awaited_once()
+    conn = handler.call_args[0][0]
+    assert conn.path == "/v1/test"
+    assert conn.query_params == {"lang": "es"}
+
+
+async def test_server_dispatch_unknown_path_closes(mocker) -> None:
+    from uuid import UUID
+
+    from e_voice.core.websocket import WebSocketServer
+
+    server = WebSocketServer(port=9999)
+    server._routes = {}
+    server._state = None
+
+    mock_ws = mocker.AsyncMock()
+    mock_ws.request.path = "/unknown"
+    mock_ws.id = UUID("12345678123456781234567812345678")
+
+    await server._dispatch(mock_ws)
+
+    mock_ws.close.assert_awaited_once()
+    assert mock_ws.close.call_args[0][0] == 4004
+
+
+async def test_server_dispatch_handler_exception_logged(mocker) -> None:
+    from uuid import UUID
+
+    from e_voice.core.websocket import WebSocketServer
+
+    async def failing_handler(conn):
+        raise RuntimeError("handler exploded")
+
+    server = WebSocketServer(port=9999)
+    server._routes = {"/v1/boom": failing_handler}
+    server._state = mocker.MagicMock()
+
+    mock_ws = mocker.AsyncMock()
+    mock_ws.request.path = "/v1/boom"
+    mock_ws.id = UUID("12345678123456781234567812345678")
+
+    await server._dispatch(mock_ws)

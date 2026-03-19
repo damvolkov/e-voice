@@ -128,6 +128,12 @@ async def test_audio_encode_chunk_pcm() -> None:
     assert len(result) == 1600
 
 
+async def test_audio_encode_chunk_wav() -> None:
+    data = np.random.randn(1600).astype(np.float32) * 0.1
+    result = Audio.encode_chunk(data, st.stt.sample_rate, "wav")
+    assert result[:4] == b"RIFF"
+
+
 ##### SAMPLES_FROM_FILE #####
 
 

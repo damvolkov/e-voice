@@ -18,8 +18,17 @@ def stt(audioeval: AudioEval) -> STTClient:
 
 @pytest.fixture(scope="session")
 def tts(audioeval: AudioEval) -> TTSClient:
+    """HTTP TTS client — for POST, SSE, streaming tests."""
     assert audioeval.tts is not None
     return audioeval.tts
+
+
+@pytest.fixture(scope="session")
+def tts_ws(e_voice_server: dict) -> TTSClient:
+    """WebSocket TTS client — for WS tests (points to standalone WS server)."""
+    host = e_voice_server["host"]
+    ws_port = e_voice_server["ws_port"]
+    return TTSClient(url=f"ws://{host}:{ws_port}/v1/audio/speech")
 
 
 @pytest.fixture(scope="session")

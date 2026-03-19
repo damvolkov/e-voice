@@ -364,3 +364,60 @@ async def test_segment_to_model_with_words(segment_with_words: Segment) -> None:
     assert model.words is not None
     assert len(model.words) == 2
     assert model.words[0].word == "hello"
+
+
+##### TRANSLATE STREAM #####
+
+
+async def test_translate_stream_yields_segments(mocker) -> None:
+    adapter = WhisperAdapter()
+    spec = ModelSpec(model_id="test-model", device="cpu")
+    mock_model = mocker.MagicMock()
+    segs = [make_segment(text=" hola"), make_segment(text=" mundo")]
+    mock_model.transcribe.return_value = (iter(segs), mocker.MagicMock())
+    mocker.patch.object(adapter, "_create_model", return_value=mock_model)
+    await adapter.load(spec)
+
+    collected = []
+    async for chunk in adapter.translate_stream(np.zeros(16_000, dtype=np.float32), spec=spec, response_format="text"):
+        collected.append(chunk)
+
+    assert len(collected) == 2
+    assert collected[0] == " hola"
+    mock_model.transcribe.assert_called_once()
+    assert mock_model.transcribe.call_args[1]["task"] == "translate"
+
+
+##### _RUN_STREAM ERROR PROPAGATION #####
+
+
+async def test_run_stream_propagates_error(mocker) -> None:
+    adapter = WhisperAdapter()
+    spec = ModelSpec(model_id="test-model", device="cpu")
+    mock_model = mocker.MagicMock()
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("GPU exploded")
+
+    mock_model.transcribe.side_effect = _explode
+    mocker.patch.object(adapter, "_create_model", return_value=mock_model)
+    await adapter.load(spec)
+
+    with pytest.raises(RuntimeError, match="GPU exploded"):
+        async for _ in adapter.transcribe_stream(np.zeros(16_000, dtype=np.float32), spec=spec):
+            pass
+
+
+##### _CREATE_MODEL #####
+
+
+async def test_create_model_calls_whisper_model(mocker) -> None:
+    mock_cls = mocker.patch("e_voice.adapters.whisper.WhisperModel")
+    adapter = WhisperAdapter()
+    spec = ModelSpec(model_id="openai/whisper-tiny", device="cpu", compute_type="int8")
+
+    adapter._create_model(spec)
+
+    mock_cls.assert_called_once()
+    assert mock_cls.call_args[0][0] == "openai/whisper-tiny"
+    assert mock_cls.call_args[1]["device"] == "cpu"
