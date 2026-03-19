@@ -13,10 +13,10 @@ services:
               capabilities: [gpu]
     labels:
       e-core.category: "audio"
-      e-core.port: "5500"
+      e-core.port: "45140"
     ports:
-      # 5500 — e-voice STT + TTS Server (ai)
-      - "${EVOICE_PORT:-5500}:80"
+      # 45140 — e-voice STT + TTS (ai/audio)
+      - "${EVOICE_PORT:-45140}:80"
     volumes:
       - models:/app/data/models
       - ./config/evoice:/app/data/config:ro
