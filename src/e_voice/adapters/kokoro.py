@@ -118,7 +118,7 @@ class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
         """Full synthesis — returns (samples, sample_rate)."""
         kokoro = self._resolve(spec)
         p = params or SynthesisParams()
-        return await asyncio.to_thread(kokoro.create, text, p.voice, p.speed, p.resolved_lang)
+        return await asyncio.to_thread(kokoro.create, text, p.voice, p.speed, p.lang)
 
     # ── Streaming Synthesis ────────────────────────────────────────────
 
@@ -132,7 +132,7 @@ class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
         """Yield audio chunks as generated — true streaming."""
         kokoro = self._resolve(spec)
         p = params or SynthesisParams()
-        async for chunk in kokoro.create_stream(text, p.voice, p.speed, p.resolved_lang):
+        async for chunk in kokoro.create_stream(text, p.voice, p.speed, p.lang):
             yield chunk
 
     # ── Private ────────────────────────────────────────────────────────

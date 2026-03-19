@@ -5,33 +5,54 @@ import pytest
 
 from e_voice.adapters.kokoro import KokoroAdapter, _resolve_provider
 from e_voice.core.settings import DeviceType
-from e_voice.models.tts import OnnxProvider, SynthesisParams, TTSModelSpec
+from e_voice.models.tts import OnnxProvider, SynthesisParams, TTSModelSpec, resolve_voice_lang
 
-##### VOICE LANG RESOLUTION #####
+##### VOICE LANG RESOLUTION — resolve_voice_lang #####
 
 
 @pytest.mark.parametrize(
-    ("voice", "lang", "expected"),
+    ("voice", "expected"),
     [
-        ("af_heart", None, "en-us"),
-        ("bf_emma", None, "en-gb"),
-        ("ef_spanish", None, "es"),
-        ("jf_japanese", None, "ja"),
-        ("af_heart", "fr", "fr"),
-        ("bf_emma", "de", "de"),
+        ("af_heart", "en-us"),
+        ("bf_emma", "en-gb"),
+        ("ef_dora", "es"),
+        ("ff_siwis", "fr"),
+        ("hf_alpha", "hi"),
+        ("if_sara", "it"),
+        ("jf_alpha", "ja"),
+        ("pf_dora", "pt-br"),
+        ("zf_xiaobei", "zh"),
     ],
-    ids=["en-us-prefix", "en-gb-prefix", "es-prefix", "ja-prefix", "explicit-fr", "explicit-de"],
+    ids=["en-us", "en-gb", "es", "fr", "hi", "it", "ja", "pt-br", "zh"],
 )
-async def test_synthesis_params_resolved_lang(voice: str, lang: str | None, expected: str) -> None:
-    assert SynthesisParams(voice=voice, lang=lang).resolved_lang == expected
+async def test_resolve_voice_lang_valid_prefix(voice: str, expected: str) -> None:
+    assert resolve_voice_lang(voice) == expected
 
 
-async def test_synthesis_params_unknown_prefix_defaults_en_us() -> None:
-    assert SynthesisParams(voice="xf_unknown").resolved_lang == "en-us"
+async def test_resolve_voice_lang_unknown_prefix_raises() -> None:
+    with pytest.raises(ValueError, match="Unknown voice prefix"):
+        resolve_voice_lang("xf_unknown")
 
 
-async def test_synthesis_params_empty_voice_defaults_en_us() -> None:
-    assert SynthesisParams(voice="").resolved_lang == "en-us"
+async def test_resolve_voice_lang_empty_raises() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        resolve_voice_lang("")
+
+
+##### SYNTHESIS PARAMS #####
+
+
+async def test_synthesis_params_defaults() -> None:
+    params = SynthesisParams()
+    assert params.voice == "af_heart"
+    assert params.speed == 1.0
+    assert params.lang == "en-us"
+
+
+async def test_synthesis_params_frozen() -> None:
+    params = SynthesisParams()
+    with pytest.raises(AttributeError):
+        params.voice = "bf_emma"
 
 
 ##### ONNX PROVIDER RESOLUTION #####

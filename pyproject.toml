@@ -95,7 +95,8 @@ lint = "ruff check --fix ."
 format = "ruff format ."
 typecheck = "ty check"
 test = "python -m pytest tests/unit -v -m 'not slow' --cov --cov-report=term-missing"
-test-integration = "python -m pytest tests/integration -v -m slow"
+test-integration = "python -m pytest tests/integration -v -m 'slow and not load'"
+test-load = "python -m pytest tests/integration -v -m load"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -103,7 +104,10 @@ asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
-markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "load: load/stress tests — run explicitly with '-m load'",
+]
 addopts = "--import-mode=importlib"
 
 [tool.ruff]

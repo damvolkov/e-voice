@@ -28,13 +28,14 @@ def _preload_nvidia_libs() -> None:
             ctypes.CDLL(str(so))
 
 
-def _run_server(port: int) -> None:
+def _run_server(port: int, ws_port: int) -> None:
     """Start e-voice on the given port. Runs in a subprocess."""
     _preload_nvidia_libs()
 
     from e_voice.core.settings import settings as st
 
     st.system.port = port
+    st.ws.port = ws_port
     st.system.host = _HOST
     st.front.enabled = False
 
@@ -55,7 +56,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 @pytest.fixture(scope="session")
 def e_voice_server():
     port = _find_free_port()
-    process = multiprocessing.Process(target=_run_server, args=(port,), daemon=True)
+    ws_port = _find_free_port()
+    process = multiprocessing.Process(target=_run_server, args=(port, ws_port), daemon=True)
     process.start()
 
     base_url = f"http://{_HOST}:{port}"
@@ -71,7 +73,7 @@ def e_voice_server():
         process.terminate()
         raise RuntimeError(f"e-voice failed to start on :{port} within {_STARTUP_TIMEOUT}s")
 
-    yield {"base_url": base_url, "host": _HOST, "port": port}
+    yield {"base_url": base_url, "host": _HOST, "port": port, "ws_port": ws_port}
 
     process.terminate()
     process.join(timeout=5)
@@ -96,11 +98,17 @@ async def http_client(base_url: str):
 
 
 @pytest.fixture(scope="session")
+def ws_base_url(e_voice_server: dict) -> str:
+    return f"ws://{e_voice_server['host']}:{e_voice_server['ws_port']}"
+
+
+@pytest.fixture(scope="session")
 async def audioeval(e_voice_server: dict):
     host = e_voice_server["host"]
     port = e_voice_server["port"]
+    ws_port = e_voice_server["ws_port"]
     client = AudioEval(
-        stt_url=f"ws://{host}:{port}/v1/audio/transcriptions",
+        stt_url=f"ws://{host}:{ws_port}/v1/audio/transcriptions",
         tts_url=f"http://{host}:{port}/v1/audio/speech",
     )
     yield client

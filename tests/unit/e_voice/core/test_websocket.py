@@ -1,8 +1,8 @@
-"""Unit tests for core/websocket.py — BaseWebSocket and WebSocketHandler."""
+"""Unit tests for core/websocket.py — BaseWebSocket, WebSocketHandler, Connection, WebSocketRouter."""
 
 import pytest
 
-from e_voice.core.websocket import BaseWebSocket, WebSocketHandler
+from e_voice.core.websocket import BaseWebSocket, Connection, WebSocketHandler, WebSocketRouter
 
 ##### BASE WEBSOCKET #####
 
@@ -164,3 +164,107 @@ async def test_websocket_handler_wsh_register_handler_async(mocker) -> None:
     fi = mock_ws.methods["message"]
     assert fi.handler is async_handler
     assert fi.is_async is True
+
+
+##### CONNECTION #####
+
+
+async def test_connection_send_delegates(mocker) -> None:
+    mock_ws = mocker.AsyncMock()
+    conn = Connection(id="abc", path="/v1/test", query_params={}, state=None, ws=mock_ws)
+
+    await conn.send("hello")
+    mock_ws.send.assert_awaited_once_with("hello")
+
+
+async def test_connection_send_bytes(mocker) -> None:
+    mock_ws = mocker.AsyncMock()
+    conn = Connection(id="abc", path="/v1/test", query_params={}, state=None, ws=mock_ws)
+
+    await conn.send(b"\x00\x01")
+    mock_ws.send.assert_awaited_once_with(b"\x00\x01")
+
+
+async def test_connection_close(mocker) -> None:
+    mock_ws = mocker.AsyncMock()
+    conn = Connection(id="abc", path="/v1/test", query_params={}, state=None, ws=mock_ws)
+
+    await conn.close(4000, "test")
+    mock_ws.close.assert_awaited_once_with(4000, "test")
+
+
+async def test_connection_aiter_yields_messages() -> None:
+    class FakeWS:
+        def __init__(self, msgs):
+            self._msgs = msgs
+
+        async def __aiter__(self):
+            for m in self._msgs:
+                yield m
+
+    conn = Connection(id="abc", path="/v1/test", query_params={}, state=None, ws=FakeWS(["text", b"binary"]))
+
+    collected = [msg async for msg in conn]
+    assert collected == ["text", b"binary"]
+
+
+##### WEBSOCKET ROUTER #####
+
+
+async def test_router_registers_handler() -> None:
+    router = WebSocketRouter()
+
+    @router("/v1/test")
+    async def handler(conn):
+        pass
+
+    assert "/v1/test" in router.routes
+    assert router.routes["/v1/test"] is handler
+
+
+async def test_router_registers_multiple_paths() -> None:
+    router = WebSocketRouter()
+
+    @router("/v1/a", "/v1/b", "/v1/c")
+    async def handler(conn):
+        pass
+
+    assert len(router.routes) == 3
+    assert all(router.routes[p] is handler for p in ("/v1/a", "/v1/b", "/v1/c"))
+
+
+async def test_router_routes_property() -> None:
+    router = WebSocketRouter()
+    assert router.routes == {}
+
+
+##### WEBSOCKET SERVER #####
+
+
+async def test_server_include_merges_routes() -> None:
+    from e_voice.core.websocket import WebSocketServer
+
+    server = WebSocketServer(port=9999)
+    r1 = WebSocketRouter()
+    r2 = WebSocketRouter()
+
+    @r1("/a")
+    async def h1(conn):
+        pass
+
+    @r2("/b")
+    async def h2(conn):
+        pass
+
+    server.include(r1)
+    server.include(r2)
+
+    assert "/a" in server._routes
+    assert "/b" in server._routes
+
+
+async def test_server_port_property() -> None:
+    from e_voice.core.websocket import WebSocketServer
+
+    server = WebSocketServer(port=5700)
+    assert server.port == 5700

@@ -13,8 +13,8 @@ from e_voice.models.tts import (
     SpeechRequest,
     StreamFormat,
     SynthesisParams,
-    VoiceLang,
     VoiceObject,
+    resolve_voice_lang,
 )
 
 router = Router(__file__, prefix="/v1")
@@ -75,17 +75,19 @@ router.alias("/audio/speech", "/tts/http", "/tts/sse", "/tts/stream")
 
 
 @router.get("/audio/voices")
-async def list_voices(global_dependencies):
-    """List available TTS voices."""
+async def list_voices(request: Request, global_dependencies):
+    """List available TTS voices, optionally filtered by ?lang=<bcp47>."""
     kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
+    lang_filter = request.query_params.get("lang", None)
 
-    voices = [
-        VoiceObject(
-            id=vid,
-            name=vid,
-            language=VoiceLang[vid[0].upper()] if vid and vid[0].upper() in VoiceLang.__members__ else "en-us",
-        )
-        for vid in sorted(kokoro.voices)
-    ]
+    voices: list[VoiceObject] = []
+    for vid in sorted(kokoro.voices):
+        try:
+            voice_lang = resolve_voice_lang(vid)
+        except ValueError:
+            continue
+        if lang_filter and voice_lang != lang_filter:
+            continue
+        voices.append(VoiceObject(id=vid, name=vid, language=voice_lang))
 
     return ListVoicesResponse(voices=voices)

@@ -9,7 +9,7 @@ from e_voice.api.tts import router as tts_router
 from e_voice.core.lifespan import create_lifespan
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
-from e_voice.core.websocket import WebSocketHandler
+from e_voice.core.websocket import WebSocketServer
 from e_voice.events.kokoro_model import KokoroModelEvent
 from e_voice.events.process_pool import ProcessPoolEvent
 from e_voice.events.whisper_model import WhisperModelEvent
@@ -17,8 +17,8 @@ from e_voice.front import launch_background as launch_gradio
 from e_voice.middlewares.base import MiddlewareHandler
 from e_voice.middlewares.files import FileUploadOpenAPIMiddleware
 from e_voice.middlewares.swagger import SwaggerBrandingMiddleware
-from e_voice.websockets.stt import ws_stt, ws_stt_alias
-from e_voice.websockets.tts import ws_tts, ws_tts_alias
+from e_voice.websockets.stt import router as ws_stt_router
+from e_voice.websockets.tts import router as ws_tts_router
 
 app = Robyn(__file__)
 
@@ -27,19 +27,17 @@ lifespan.register(ProcessPoolEvent)
 lifespan.register(WhisperModelEvent)
 lifespan.register(KokoroModelEvent)
 
-websockets = WebSocketHandler(app)
-websockets.register(ws_stt)
-websockets.register(ws_stt_alias)
-websockets.register(ws_tts)
-websockets.register(ws_tts_alias)
+ws_server = WebSocketServer(port=st.ws.port)
+ws_server.include(ws_stt_router)
+ws_server.include(ws_tts_router)
 
 
 async def startup() -> None:
-    """Startup: lifespan first, then inject WS dependencies, then Gradio UI."""
+    """Startup: lifespan first, then WS server, then Gradio UI."""
     await lifespan.startup()
     assert lifespan.state is not None
     lifespan.state.stt_sessions = {}
-    websockets.inject_dependencies()
+    ws_server.launch_background(state=lifespan.state)
     launch_gradio()
 
 
@@ -57,7 +55,14 @@ app.include_router(system_router)
 
 
 def main() -> None:
-    logger.info("starting server", name=st.API_NAME, host=st.system.host, port=st.system.port, step="START")
+    logger.info(
+        "starting server",
+        name=st.API_NAME,
+        host=st.system.host,
+        port=st.system.port,
+        ws_port=st.ws.port,
+        step="START",
+    )
     app.start(host=st.system.host, port=st.system.port)
 
 

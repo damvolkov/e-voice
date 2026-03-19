@@ -1,23 +1,16 @@
-"""WebSocket /v1/audio/transcriptions — streaming STT with LocalAgreement."""
+"""WebSocket /v1/audio/transcriptions — streaming STT with binary frame support."""
 
 import base64
 
 import orjson
-from robyn.robyn import WebSocketConnector
 
 from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
-from e_voice.core.websocket import BaseWebSocket
-from e_voice.streaming.transcriber import (
-    SessionState,
-    StreamingEvent,
-    flush_session,
-    process_audio_chunk,
-)
+from e_voice.core.websocket import Connection, WebSocketRouter
+from e_voice.streaming.transcriber import SessionState, StreamingEvent, flush_session, process_audio_chunk
 
-ws_stt = BaseWebSocket("/v1/audio/transcriptions")
-ws_stt_alias = BaseWebSocket("/v1/stt/ws")
+router = WebSocketRouter()
 
 
 def format_event(event: StreamingEvent, response_format: str) -> str:
@@ -36,64 +29,48 @@ def format_event(event: StreamingEvent, response_format: str) -> str:
             ).decode()
 
 
-@ws_stt.on("connect")
-def on_connect(ws: WebSocketConnector, global_dependencies) -> str:
-    lang = ws.query_params.get("language", None) or st.stt.default_language
-    fmt = ws.query_params.get("response_format", None) or st.stt.default_response_format.value
-    model = ws.query_params.get("model", None) or st.stt.model
+@router("/v1/audio/transcriptions", "/v1/stt/ws")
+async def handle_stt(conn: Connection) -> None:
+    """Stream audio → transcription. Accepts binary PCM16-LE or base64 text frames."""
+    lang = conn.query_params.get("language") or st.stt.default_language
+    fmt = conn.query_params.get("response_format") or st.stt.default_response_format.value
+    model = conn.query_params.get("model") or st.stt.model
 
-    sessions: dict[str, SessionState] = global_dependencies.get("state").stt_sessions
-    sessions[ws.id] = SessionState(
+    session = SessionState(
         language=lang if lang != "auto" else None,
         model_id=model,
         response_format=fmt,
     )
+    conn.state.stt_sessions[conn.id] = session
+    logger.info("stt stream started", step="WS", client=conn.id, lang=lang or "auto", fmt=fmt)
 
-    logger.info("stt stream started", step="WS", client=ws.id, lang=lang or "auto", fmt=fmt)
-    return ""
-
-
-@ws_stt.on("message")
-async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> str:
-    """Receive base64 PCM16 chunk or END_OF_AUDIO signal."""
     try:
-        state = global_dependencies.get("state")
-        if (session := state.stt_sessions.get(ws.id)) is None:
-            return orjson.dumps({"error": "no session"}).decode()
+        async for msg in conn:
+            match msg:
+                case str() if msg.strip() == "END_OF_AUDIO":
+                    event = flush_session(session)
+                    if event.new_confirmed:
+                        logger.info(event.new_confirmed, step="STT", final=True)
+                    await conn.send(format_event(event, session.response_format))
+                    continue
+                case bytes():
+                    samples = Audio.pcm16_to_float32(msg)
+                case str():
+                    samples = Audio.pcm16_to_float32(base64.b64decode(msg))
 
-        if msg.strip() == "END_OF_AUDIO":
-            event = flush_session(session)
+            if (event := await process_audio_chunk(session, conn.state.whisper, samples)) is None:
+                continue
+
             if event.new_confirmed:
-                logger.info(event.new_confirmed, step="STT", final=True)
-            return format_event(event, session.response_format)
+                logger.info(event.new_confirmed, step="STT", lang=session.language or "auto")
 
-        whisper = state.whisper
-
-        raw_bytes = base64.b64decode(msg)
-        audio_samples = Audio.pcm16_to_float32(raw_bytes)
-
-        if (event := await process_audio_chunk(session, whisper, audio_samples)) is None:
-            return ""
-
-        if event.new_confirmed:
-            logger.info(event.new_confirmed, step="STT", lang=session.language or "auto")
-
-        return format_event(event, session.response_format)
+            await conn.send(format_event(event, session.response_format))
 
     except Exception as exc:
         logger.error("streaming transcription failed", step="WS", error=str(exc))
-        return orjson.dumps({"error": str(exc)}).decode()
-
-
-@ws_stt.on("close")
-def on_close(ws: WebSocketConnector, global_dependencies) -> str:
-    sessions: dict[str, SessionState] = global_dependencies.get("state").stt_sessions
-    if (session := sessions.pop(ws.id, None)) is not None:
-        event = flush_session(session)
-        if event.new_confirmed:
-            logger.info(event.new_confirmed, step="STT", final=True)
-    logger.info("stt stream ended", step="WS", client=ws.id)
-    return ""
-
-
-ws_stt_alias._handlers = ws_stt._handlers
+        await conn.send(orjson.dumps({"error": str(exc)}).decode())
+    finally:
+        if (session := conn.state.stt_sessions.pop(conn.id, None)) is not None:
+            event = flush_session(session)
+            if event.new_confirmed:
+                logger.info(event.new_confirmed, step="STT", final=True)

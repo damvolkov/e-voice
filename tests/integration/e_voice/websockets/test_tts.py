@@ -1,7 +1,6 @@
 import base64
 
 import orjson
-import pytest
 from pytest_audioeval.tts import TTSClient
 
 ##### WS /v1/audio/speech #####
@@ -118,7 +117,6 @@ async def test_ws_speech_invalid_json_returns_error(
     assert "Invalid JSON" in body["error"]
 
 
-@pytest.mark.xfail(reason="Robyn WS on_message only handles text frames; binary frames close the connection")
 async def test_ws_speech_binary_message_ignored(
     tts: TTSClient,
 ) -> None:

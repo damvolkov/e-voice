@@ -1,6 +1,7 @@
 PROJECT ?= e-voice
 PACKAGE ?= src/e_voice
 SERVICE_PORT ?= 5500
+WS_PORT ?= 5700
 GRADIO_PORT ?= 5600
 WEBSOCAT_VERSION ?= 1.13.0
 
@@ -36,7 +37,7 @@ help:
 	@echo "  $(GREEN)make sync$(RESET)             Sync dependencies from lockfile"
 	@echo ""
 	@echo "$(BOLD)Development:$(RESET)"
-	@echo "  $(GREEN)make dev$(RESET)              API on :$(SERVICE_PORT), Gradio UI on :$(GRADIO_PORT)"
+	@echo "  $(GREEN)make dev$(RESET)              API on :$(SERVICE_PORT), WS on :$(WS_PORT), Gradio on :$(GRADIO_PORT)"
 	@echo ""
 	@echo "$(BOLD)Live test (requires running server):$(RESET)"
 	@echo "  $(GREEN)make stt$(RESET)              mic → WebSocket STT  (ffmpeg + websocat)"
@@ -110,7 +111,7 @@ test-integration:
 check: lint type test
 
 
-# Development — API on :5500, Gradio on :5600
+# Development — API on :5500, WS on :5700, Gradio on :5600
 
 dev:
 	@echo "$(CYAN)=== API: http://localhost:$(SERVICE_PORT) | Gradio: http://localhost:$(GRADIO_PORT) [reload] ===$(RESET)"
@@ -127,11 +128,10 @@ STT_FMT ?= text
 stt:
 	@command -v ffmpeg >/dev/null 2>&1 || { echo "$(RED)ffmpeg not found. Run: make install$(RESET)"; exit 1; }
 	@command -v websocat >/dev/null 2>&1 || { echo "$(RED)websocat not found. Run: make install$(RESET)"; exit 1; }
-	@echo "$(CYAN)=== STT: mic → ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions?language=$(STT_LANG) ===$(RESET)"
+	@echo "$(CYAN)=== STT: mic → ws://localhost:$(WS_PORT)/v1/audio/transcriptions?language=$(STT_LANG) ===$(RESET)"
 	@echo "$(YELLOW)Press Ctrl+C to stop$(RESET)"
 	@ffmpeg -loglevel quiet -f pulse -i default -ac 1 -ar 16000 -f s16le pipe:1 \
-		| uv run python -uc "import sys,base64;[print(base64.b64encode(c).decode(),flush=True)for c in iter(lambda:sys.stdin.buffer.read(32000),b'')]" \
-		| websocat "ws://localhost:$(SERVICE_PORT)/v1/audio/transcriptions?language=$(STT_LANG)&response_format=$(STT_FMT)"
+		| websocat --binary "ws://localhost:$(WS_PORT)/v1/audio/transcriptions?language=$(STT_LANG)&response_format=$(STT_FMT)"
 
 TTS_VOICE ?= af_heart
 TTS_FMT ?= pcm

@@ -51,11 +51,11 @@ async def test_stt_sse_alias_streams_events(http_client: httpx.AsyncClient, en_s
 async def test_stt_ws_alias_returns_transcription(
     audioeval: AudioEval,
     en_sample,
-    base_url: str,
+    ws_base_url: str,
 ) -> None:
     from pytest_audioeval.stt import STTClient
 
-    ws_url = base_url.replace("http://", "ws://") + "/v1/stt/ws"
+    ws_url = ws_base_url + "/v1/stt/ws"
     client = STTClient(url=ws_url)
 
     async with client.ws(sample=en_sample, params={"response_format": "text"}) as session:
@@ -133,11 +133,11 @@ async def test_tts_stream_alias_returns_chunked_audio(http_client: httpx.AsyncCl
 
 
 async def test_tts_ws_alias_returns_audio_events(
-    base_url: str,
+    ws_base_url: str,
 ) -> None:
     from pytest_audioeval.tts import TTSClient
 
-    ws_url = base_url.replace("http://", "ws://") + "/v1/tts/ws"
+    ws_url = ws_base_url + "/v1/tts/ws"
     client = TTSClient(url=ws_url)
 
     async with client.ws() as ws:

@@ -80,8 +80,12 @@ def _api() -> APIClient:
 ##### LIVE MIC WRAPPERS #####
 
 
+def _ws_url() -> str:
+    return f"ws://127.0.0.1:{st.ws.port}"
+
+
 def _on_start(language: str) -> dict | None:
-    return create_stream(_base_url(), language)
+    return create_stream(_ws_url(), language)
 
 
 def _on_chunk(state: dict | None, audio_chunk) -> tuple[dict | None, str]:
@@ -143,6 +147,48 @@ def _synthesize(text: str, voice: str, speed: float) -> str | None:
     tmp = Path("/tmp/evoice_tts_output.wav")
     tmp.write_bytes(audio_bytes)
     return str(tmp)
+
+
+##### VOICE WRAPPERS #####
+
+_LANG_LABELS: dict[str, str] = {
+    "en-us": "🇺🇸 English (US)",
+    "en-gb": "🇬🇧 English (UK)",
+    "es": "🇪🇸 Spanish",
+    "fr": "🇫🇷 French",
+    "hi": "🇮🇳 Hindi",
+    "it": "🇮🇹 Italian",
+    "ja": "🇯🇵 Japanese",
+    "pt-br": "🇧🇷 Portuguese (BR)",
+    "zh": "🇨🇳 Chinese",
+}
+
+
+def _fetch_voice_choices() -> list[str]:
+    """Fetch available voices from API, sorted by language then name."""
+    voices = _api().get_voices()
+    if not voices:
+        return ["af_heart"]
+    return [v["id"] for v in sorted(voices, key=lambda v: (v.get("language", ""), v["id"]))]
+
+
+def _format_voices_display() -> str:
+    """Format voices grouped by language as Markdown."""
+    voices = _api().get_voices()
+    if not voices:
+        return "No voices available — TTS model not loaded."
+
+    grouped: dict[str, list[str]] = {}
+    for v in voices:
+        lang = v.get("language", "unknown")
+        grouped.setdefault(lang, []).append(v["id"])
+
+    lines: list[str] = []
+    for lang in sorted(grouped):
+        label = _LANG_LABELS.get(lang, lang)
+        names = ", ".join(f"`{n}`" for n in sorted(grouped[lang]))
+        lines.append(f"**{label}** — {names}")
+    return "\n\n".join(lines)
 
 
 ##### MODEL WRAPPERS #####
@@ -242,21 +288,10 @@ def create_app() -> gr.Blocks:
                 with gr.Row():
                     with gr.Column(scale=1):
                         tts_text = gr.Textbox(label="Text", lines=4, placeholder="Enter text to synthesize...")
+                        voice_choices = _fetch_voice_choices()
                         tts_voice = gr.Dropdown(
-                            choices=[
-                                "af_heart",
-                                "af_bella",
-                                "af_nicole",
-                                "af_sarah",
-                                "af_sky",
-                                "am_adam",
-                                "am_michael",
-                                "bf_emma",
-                                "bf_isabella",
-                                "bm_george",
-                                "bm_lewis",
-                            ],
-                            value=st.tts.default_voice,
+                            choices=voice_choices,
+                            value=st.tts.default_voice if st.tts.default_voice in voice_choices else voice_choices[0],
                             label="Voice",
                         )
                         tts_speed = gr.Slider(0.5, 2.0, value=st.tts.default_speed, step=0.1, label="Speed")
@@ -265,6 +300,12 @@ def create_app() -> gr.Blocks:
                         tts_output = gr.Audio(label="Output", type="filepath")
 
                 tts_btn.click(fn=_synthesize, inputs=[tts_text, tts_voice, tts_speed], outputs=tts_output)
+
+            ##### VOICES TAB #####
+            with gr.Tab("Voices"):
+                voices_display = gr.Markdown(value=_format_voices_display)
+                voices_refresh_btn = gr.Button("Refresh", variant="secondary")
+                voices_refresh_btn.click(fn=_format_voices_display, outputs=voices_display)
 
             ##### MODELS TAB #####
             with gr.Tab("Models"):

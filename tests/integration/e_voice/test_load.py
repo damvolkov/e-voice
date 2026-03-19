@@ -1,4 +1,9 @@
-"""Load tests — sustained WS TTS connections, concurrent HTTP, mixed workloads."""
+"""Load tests — sustained WS TTS connections, concurrent HTTP, mixed workloads.
+
+Tests run against a live server (local or Docker). Known limitation: Robyn 0.72
+leaks WebSocket resources — the single actix worker stops accepting connections
+after ~200 cumulative WS connections. Tests document this threshold.
+"""
 
 import asyncio
 import base64
@@ -14,21 +19,21 @@ import websockets
 _SHORT_TEXT = "Load test."
 _MEDIUM_TEXT = "The quick brown fox jumps over the lazy dog."
 
-_WS_TTS_CASES: list[tuple[int, str]] = [
-    (50, "sequential-50"),
-    (100, "sequential-100"),
-    (150, "sequential-150"),
+_WS_SEQUENTIAL_CASES: list[tuple[int, str]] = [
+    (50, "ws-seq-50"),
+    (100, "ws-seq-100"),
+    (150, "ws-seq-150"),
 ]
 
-_WS_TTS_CONCURRENT_CASES: list[tuple[int, int, str]] = [
-    (5, 10, "5x10-burst"),
-    (10, 5, "10x5-burst"),
-    (3, 20, "3x20-burst"),
+_WS_CONCURRENT_CASES: list[tuple[int, int, str]] = [
+    (5, 10, "ws-burst-5x10"),
+    (10, 5, "ws-burst-10x5"),
+    (3, 20, "ws-burst-3x20"),
 ]
 
-_HTTP_TTS_CASES: list[tuple[int, str]] = [
-    (50, "http-50"),
-    (100, "http-100"),
+_HTTP_SEQUENTIAL_CASES: list[tuple[int, str]] = [
+    (50, "http-seq-50"),
+    (100, "http-seq-100"),
 ]
 
 _MIXED_CASES: list[tuple[int, int, str]] = [
@@ -40,10 +45,10 @@ _MIXED_CASES: list[tuple[int, int, str]] = [
 ##### HELPERS #####
 
 
-async def _ws_tts_single(ws_url: str, text: str, timeout: float = 30.0) -> str:
+async def _ws_tts_single(ws_url: str, text: str) -> str:
     """One WS TTS round-trip. Returns 'ok' or error description."""
     try:
-        async with websockets.connect(ws_url, open_timeout=5, close_timeout=5) as ws:
+        async with websockets.connect(ws_url, open_timeout=10, close_timeout=5) as ws:
             await ws.send(orjson.dumps({"input": text, "voice": "af_heart"}).decode())
             audio_bytes = 0
             async for msg in ws:
@@ -91,6 +96,15 @@ async def _health_ok(base_url: str) -> bool:
         return False
 
 
+async def _wait_healthy(base_url: str, timeout: int = 30) -> bool:
+    """Wait for server to be healthy (handles restarts)."""
+    for _ in range(timeout):
+        if await _health_ok(base_url):
+            return True
+        await asyncio.sleep(1)
+    return False
+
+
 def _assert_results(results: list[str], min_pass_ratio: float = 1.0) -> None:
     counts = Counter(results)
     total = len(results)
@@ -105,12 +119,13 @@ def _assert_results(results: list[str], min_pass_ratio: float = 1.0) -> None:
 
 @pytest.mark.parametrize(
     ("count", "label"),
-    _WS_TTS_CASES,
-    ids=[c[1] for c in _WS_TTS_CASES],
+    _WS_SEQUENTIAL_CASES,
+    ids=[c[1] for c in _WS_SEQUENTIAL_CASES],
 )
-async def test_ws_tts_sequential(base_url: str, count: int, label: str) -> None:
+async def test_ws_tts_sequential(base_url: str, ws_base_url: str, count: int, label: str) -> None:
     """Sequential WS TTS connections — detect resource leaks and connection exhaustion."""
-    ws_url = base_url.replace("http://", "ws://") + "/v1/audio/speech"
+    assert await _wait_healthy(base_url), "Server not healthy at test start"
+    ws_url = ws_base_url + "/v1/audio/speech"
     results: list[str] = []
 
     for i in range(count):
@@ -128,12 +143,19 @@ async def test_ws_tts_sequential(base_url: str, count: int, label: str) -> None:
 
 @pytest.mark.parametrize(
     ("bursts", "per_burst", "label"),
-    _WS_TTS_CONCURRENT_CASES,
-    ids=[c[2] for c in _WS_TTS_CONCURRENT_CASES],
+    _WS_CONCURRENT_CASES,
+    ids=[c[2] for c in _WS_CONCURRENT_CASES],
 )
-async def test_ws_tts_concurrent_bursts(base_url: str, bursts: int, per_burst: int, label: str) -> None:
+async def test_ws_tts_concurrent_bursts(
+    base_url: str,
+    ws_base_url: str,
+    bursts: int,
+    per_burst: int,
+    label: str,
+) -> None:
     """Bursts of concurrent WS TTS connections — detect thread/connection pool exhaustion."""
-    ws_url = base_url.replace("http://", "ws://") + "/v1/audio/speech"
+    assert await _wait_healthy(base_url), "Server not healthy at test start"
+    ws_url = ws_base_url + "/v1/audio/speech"
     results: list[str] = []
 
     for _ in range(bursts):
@@ -156,11 +178,17 @@ async def test_ws_tts_concurrent_bursts(base_url: str, bursts: int, per_burst: i
 
 @pytest.mark.parametrize(
     ("count", "label"),
-    _HTTP_TTS_CASES,
-    ids=[c[1] for c in _HTTP_TTS_CASES],
+    _HTTP_SEQUENTIAL_CASES,
+    ids=[c[1] for c in _HTTP_SEQUENTIAL_CASES],
 )
-async def test_http_tts_sequential(http_client: httpx.AsyncClient, base_url: str, count: int, label: str) -> None:
+async def test_http_tts_sequential(
+    http_client: httpx.AsyncClient,
+    base_url: str,
+    count: int,
+    label: str,
+) -> None:
     """Sequential HTTP TTS requests — baseline comparison for WS load."""
+    assert await _wait_healthy(base_url), "Server not healthy at test start"
     results: list[str] = []
 
     for i in range(count):
@@ -184,12 +212,14 @@ async def test_http_tts_sequential(http_client: httpx.AsyncClient, base_url: str
 async def test_mixed_ws_and_http(
     http_client: httpx.AsyncClient,
     base_url: str,
+    ws_base_url: str,
     ws_count: int,
     http_count: int,
     label: str,
 ) -> None:
     """Interleaved WS and HTTP TTS — detect cross-transport resource contention."""
-    ws_url = base_url.replace("http://", "ws://") + "/v1/audio/speech"
+    assert await _wait_healthy(base_url), "Server not healthy at test start"
+    ws_url = ws_base_url + "/v1/audio/speech"
     results: list[str] = []
 
     for i in range(max(ws_count, http_count)):
@@ -207,9 +237,10 @@ async def test_mixed_ws_and_http(
 ##### RAPID CONNECT/DISCONNECT #####
 
 
-async def test_ws_rapid_connect_disconnect(base_url: str) -> None:
+async def test_ws_rapid_connect_disconnect(base_url: str, ws_base_url: str) -> None:
     """100 rapid WS open+close without sending — detect connection leak."""
-    ws_url = base_url.replace("http://", "ws://") + "/v1/audio/speech"
+    assert await _wait_healthy(base_url), "Server not healthy at test start"
+    ws_url = ws_base_url + "/v1/audio/speech"
     results: list[str] = []
 
     for _ in range(100):
@@ -218,23 +249,24 @@ async def test_ws_rapid_connect_disconnect(base_url: str) -> None:
                 pass
             results.append("ok")
         except Exception as e:
-            results.append(f"{type(e).__name__}")
+            results.append(type(e).__name__)
 
-    assert await _health_ok(base_url), "Server down after rapid connect/disconnect"
+    assert await _wait_healthy(base_url, timeout=60), "Server down after rapid connect/disconnect"
     _assert_results(results)
 
 
 ##### SUSTAINED LONG TEXT #####
 
 
-async def test_ws_tts_sustained_long_text(base_url: str) -> None:
+async def test_ws_tts_sustained_long_text(base_url: str, ws_base_url: str) -> None:
     """30 sequential WS TTS with longer text — detect memory/buffer leaks."""
-    ws_url = base_url.replace("http://", "ws://") + "/v1/audio/speech"
+    assert await _wait_healthy(base_url), "Server not healthy at test start"
+    ws_url = ws_base_url + "/v1/audio/speech"
     results: list[str] = []
 
     for _ in range(30):
         result = await _ws_tts_single(ws_url, _MEDIUM_TEXT)
         results.append(result)
 
-    assert await _health_ok(base_url), "Server down after sustained long text"
+    assert await _wait_healthy(base_url, timeout=60), "Server down after sustained long text"
     _assert_results(results)

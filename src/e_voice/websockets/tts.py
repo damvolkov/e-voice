@@ -1,67 +1,66 @@
-"""WebSocket /v1/audio/speech — real-time streaming TTS."""
+"""WebSocket /v1/audio/speech — streaming TTS."""
 
 import orjson
-from robyn.robyn import WebSocketConnector
 
 from e_voice.adapters.kokoro import KokoroAdapter
 from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
-from e_voice.core.websocket import BaseWebSocket
-from e_voice.models.tts import SynthesisParams
+from e_voice.core.websocket import Connection, WebSocketRouter
+from e_voice.models.tts import SynthesisParams, resolve_voice_lang
 
-ws_tts = BaseWebSocket("/v1/audio/speech")
-ws_tts_alias = BaseWebSocket("/v1/tts/ws")
-
-
-@ws_tts.on("connect")
-def on_connect(ws: WebSocketConnector) -> str:
-    logger.info("tts connected", step="WS", client=ws.id)
-    return ""
+router = WebSocketRouter()
 
 
-@ws_tts.on("message")
-async def on_message(ws: WebSocketConnector, msg: str, global_dependencies) -> str:
-    """Receive JSON text request, stream back base64 PCM16 audio chunks."""
-    if not msg or not msg.strip():
-        return ""
+@router("/v1/audio/speech", "/v1/tts/ws")
+async def handle_tts(conn: Connection) -> None:
+    """Receive JSON request, stream back base64 PCM16 audio chunks."""
+    async for msg in conn:
+        if not isinstance(msg, str) or not msg.strip():
+            continue
 
-    try:
-        payload = orjson.loads(msg)
-    except orjson.JSONDecodeError:
-        return orjson.dumps({"error": "Invalid JSON"}).decode()
+        try:
+            payload = orjson.loads(msg)
+        except orjson.JSONDecodeError:
+            await conn.send(orjson.dumps({"error": "Invalid JSON"}).decode())
+            continue
 
-    text = payload.get("input", "")
-    if not text:
-        return orjson.dumps({"error": "Empty input"}).decode()
+        text = payload.get("input", "")
+        if not text:
+            await conn.send(orjson.dumps({"error": "Empty input"}).decode())
+            continue
 
-    kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
-    params = SynthesisParams(
-        voice=payload.get("voice", "af_heart"),
-        speed=float(payload.get("speed", 1.0)),
-        lang=payload.get("lang"),
-    )
+        voice = payload.get("voice", "af_heart")
+        try:
+            voice_lang = resolve_voice_lang(voice)
+        except ValueError as e:
+            await conn.send(orjson.dumps({"error": str(e)}).decode())
+            continue
 
-    logger.info("speech request", step="WS", client=ws.id, voice=params.voice, text_len=len(text))
+        explicit_lang = payload.get("lang")
+        if explicit_lang and explicit_lang != voice_lang:
+            await conn.send(
+                orjson.dumps(
+                    {
+                        "error": f"Language '{explicit_lang}' conflicts with voice '{voice}' (expected '{voice_lang}').",
+                    }
+                ).decode()
+            )
+            continue
 
-    async for samples, _sr in kokoro.synthesize_stream(text, params=params):
-        chunk = orjson.dumps(
-            {
-                "type": "speech.audio.delta",
-                "audio": Audio.float32_to_base64_pcm16(samples),
-            }
-        ).decode()
-        await ws.async_send_to(ws.id, chunk)
+        kokoro: KokoroAdapter = conn.state.kokoro
+        params = SynthesisParams(voice=voice, speed=float(payload.get("speed", 1.0)), lang=explicit_lang or voice_lang)
+        logger.info(
+            "speech request", step="WS", client=conn.id, voice=params.voice, lang=params.lang, text_len=len(text)
+        )
 
-    done = orjson.dumps({"type": "speech.audio.done"}).decode()
-    await ws.async_send_to(ws.id, done)
+        async for samples, _sr in kokoro.synthesize_stream(text, params=params):
+            await conn.send(
+                orjson.dumps(
+                    {
+                        "type": "speech.audio.delta",
+                        "audio": Audio.float32_to_base64_pcm16(samples),
+                    }
+                ).decode()
+            )
 
-    return ""
-
-
-@ws_tts.on("close")
-def on_close(ws: WebSocketConnector) -> str:
-    logger.info("tts disconnected", step="WS", client=ws.id)
-    return ""
-
-
-ws_tts_alias._handlers = ws_tts._handlers
+        await conn.send(orjson.dumps({"type": "speech.audio.done"}).decode())

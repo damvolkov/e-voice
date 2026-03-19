@@ -140,6 +140,19 @@ class APIClient:
             resp.raise_for_status()
             return resp.content
 
+    ##### VOICES #####
+
+    def get_voices(self, lang: str | None = None) -> list[dict]:
+        """Return available TTS voices, optionally filtered by BCP-47 language code."""
+        try:
+            with self._http() as c:
+                params = {"lang": lang} if lang else {}
+                resp = c.get("/v1/audio/voices", params=params)
+                resp.raise_for_status()
+                return resp.json().get("voices", [])
+        except Exception:
+            return []
+
     ##### MODELS #####
 
     def get_models(self) -> list[str]:

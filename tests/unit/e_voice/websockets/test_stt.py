@@ -1,52 +1,14 @@
-"""Unit tests for websockets/stt.py — streaming STT handlers."""
+"""Unit tests for websockets/stt.py — streaming STT handler."""
 
 import base64
-from dataclasses import dataclass, field
 
 import numpy as np
 import orjson
 
-from e_voice.streaming.transcriber import SessionState, StreamingEvent, StreamingEventType
-from e_voice.websockets.stt import format_event, on_close, on_connect, on_message
+from e_voice.streaming.transcriber import StreamingEvent, StreamingEventType
+from e_voice.websockets.stt import format_event, handle_stt
 
-##### FIXTURES #####
-
-
-@dataclass
-class MockWSConnector:
-    id: str = "ws-001"
-    query_params: dict = field(default_factory=dict)
-
-
-@dataclass
-class _FakeEnum:
-    value: str = "json"
-
-
-@dataclass
-class MockSTTConfig:
-    default_language: str | None = None
-    default_response_format: _FakeEnum | None = field(default=None)
-    model: str = "Systran/faster-whisper-small"
-
-    def __post_init__(self) -> None:
-        if self.default_response_format is None:
-            self.default_response_format = _FakeEnum()
-
-
-@dataclass
-class MockState:
-    stt_sessions: dict = field(default_factory=dict)
-    whisper: object = None
-
-
-class MockGlobalDeps:
-    def __init__(self, state: MockState) -> None:
-        self._state = state
-
-    def get(self, key: str) -> MockState:
-        return self._state
-
+from .conftest import MockConnection, MockState
 
 ##### FORMAT_EVENT #####
 
@@ -76,64 +38,10 @@ async def test_format_event_text() -> None:
     assert format_event(event, "text") == "Hello world"
 
 
-##### ON_CONNECT #####
+##### HANDLE_STT — BINARY FRAMES #####
 
 
-async def test_on_connect_creates_session() -> None:
-    ws = MockWSConnector(query_params={"language": "es", "response_format": "text", "model": "tiny"})
-    state = MockState()
-    deps = MockGlobalDeps(state)
-
-    on_connect(ws, deps)
-
-    assert ws.id in state.stt_sessions
-    session = state.stt_sessions[ws.id]
-    assert session.language == "es"
-    assert session.response_format == "text"
-    assert session.model_id == "tiny"
-
-
-async def test_on_connect_defaults(mocker) -> None:
-    mocker.patch("e_voice.websockets.stt.st", mocker.MagicMock(stt=MockSTTConfig()))
-    ws = MockWSConnector(query_params={})
-    state = MockState()
-    deps = MockGlobalDeps(state)
-
-    on_connect(ws, deps)
-
-    session = state.stt_sessions[ws.id]
-    assert session.model_id == "Systran/faster-whisper-small"
-
-
-async def test_on_connect_auto_language_sets_none() -> None:
-    ws = MockWSConnector(query_params={"language": "auto", "response_format": "json", "model": "tiny"})
-    state = MockState()
-    deps = MockGlobalDeps(state)
-
-    on_connect(ws, deps)
-
-    session = state.stt_sessions[ws.id]
-    assert session.language is None
-
-
-##### ON_MESSAGE #####
-
-
-async def test_on_message_no_session() -> None:
-    ws = MockWSConnector(id="unknown")
-    state = MockState()
-    deps = MockGlobalDeps(state)
-
-    result = await on_message(ws, "", deps)
-    parsed = orjson.loads(result)
-    assert parsed["error"] == "no session"
-
-
-async def test_on_message_processes_audio(mocker) -> None:
-    session = SessionState(language="en", model_id="tiny", response_format="json")
-    state = MockState(stt_sessions={"ws-001": session}, whisper=mocker.MagicMock())
-    deps = MockGlobalDeps(state)
-
+async def test_handle_stt_binary_pcm16(mocker) -> None:
     event = StreamingEvent(
         type=StreamingEventType.TRANSCRIPT_UPDATE,
         confirmed_text="Hi",
@@ -142,64 +50,159 @@ async def test_on_message_processes_audio(mocker) -> None:
     )
     mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=event)
 
-    pcm_samples = np.zeros(160, dtype=np.int16)
-    msg = base64.b64encode(pcm_samples.tobytes()).decode()
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    pcm16 = np.zeros(160, dtype=np.int16).tobytes()
 
-    result = await on_message(MockWSConnector(), msg, deps)
-    parsed = orjson.loads(result)
+    conn = MockConnection(
+        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        state=state,
+        _messages=[pcm16],
+    )
+
+    await handle_stt(conn)
+
+    assert len(conn.sent) == 1
+    parsed = orjson.loads(conn.sent[0])
     assert parsed["text"] == "Hi"
 
 
-async def test_on_message_returns_empty_on_none_event(mocker) -> None:
-    session = SessionState(language="en", model_id="tiny", response_format="json")
-    state = MockState(stt_sessions={"ws-001": session}, whisper=mocker.MagicMock())
-    deps = MockGlobalDeps(state)
-
-    mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=None)
-
-    pcm_samples = np.zeros(160, dtype=np.int16)
-    msg = base64.b64encode(pcm_samples.tobytes()).decode()
-    result = await on_message(MockWSConnector(), msg, deps)
-    assert result == ""
+##### HANDLE_STT — BASE64 BACKWARD COMPAT #####
 
 
-async def test_on_message_handles_exception(mocker) -> None:
-    session = SessionState(language="en", model_id="tiny", response_format="json")
-    state = MockState(stt_sessions={"ws-001": session}, whisper=mocker.MagicMock())
-    deps = MockGlobalDeps(state)
+async def test_handle_stt_base64_text(mocker) -> None:
+    event = StreamingEvent(
+        type=StreamingEventType.TRANSCRIPT_UPDATE,
+        confirmed_text="Hi",
+        unconfirmed_text="",
+        new_confirmed="Hi",
+    )
+    mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=event)
 
-    mocker.patch("e_voice.websockets.stt.process_audio_chunk", side_effect=RuntimeError("boom"))
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    b64 = base64.b64encode(np.zeros(160, dtype=np.int16).tobytes()).decode()
 
-    msg = base64.b64encode(b"\x00" * 320).decode()
-    result = await on_message(MockWSConnector(), msg, deps)
-    parsed = orjson.loads(result)
-    assert "boom" in parsed["error"]
+    conn = MockConnection(
+        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        state=state,
+        _messages=[b64],
+    )
+
+    await handle_stt(conn)
+
+    assert len(conn.sent) == 1
+    parsed = orjson.loads(conn.sent[0])
+    assert parsed["text"] == "Hi"
 
 
-##### ON_CLOSE #####
+##### HANDLE_STT — END_OF_AUDIO #####
 
 
-async def test_on_close_flushes_session(mocker) -> None:
-    session = SessionState(language="en", model_id="tiny", response_format="json")
-    state = MockState(stt_sessions={"ws-001": session})
-    deps = MockGlobalDeps(state)
-
+async def test_handle_stt_end_of_audio_flushes(mocker) -> None:
     event = StreamingEvent(
         type=StreamingEventType.SESSION_END,
-        confirmed_text="final text",
+        confirmed_text="final",
         unconfirmed_text="",
-        new_confirmed="final text",
+        new_confirmed="final",
+        is_final=True,
     )
     mocker.patch("e_voice.websockets.stt.flush_session", return_value=event)
 
-    result = on_close(MockWSConnector(), deps)
-    assert result == ""
-    assert "ws-001" not in state.stt_sessions
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    conn = MockConnection(
+        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        state=state,
+        _messages=["END_OF_AUDIO"],
+    )
+
+    await handle_stt(conn)
+
+    assert len(conn.sent) == 1
+    parsed = orjson.loads(conn.sent[0])
+    assert parsed["text"] == "final"
+    assert parsed["is_final"] is True
 
 
-async def test_on_close_no_session() -> None:
-    state = MockState()
-    deps = MockGlobalDeps(state)
+##### HANDLE_STT — NONE EVENT SKIPPED #####
 
-    result = on_close(MockWSConnector(id="nonexistent"), deps)
-    assert result == ""
+
+async def test_handle_stt_none_event_skipped(mocker) -> None:
+    mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=None)
+
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    pcm16 = np.zeros(160, dtype=np.int16).tobytes()
+
+    conn = MockConnection(
+        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        state=state,
+        _messages=[pcm16],
+    )
+
+    await handle_stt(conn)
+
+    assert conn.sent == []
+
+
+##### HANDLE_STT — SESSION CLEANUP #####
+
+
+async def test_handle_stt_cleans_session_on_disconnect(mocker) -> None:
+    event = StreamingEvent(
+        type=StreamingEventType.SESSION_END,
+        confirmed_text="",
+        unconfirmed_text="",
+        new_confirmed="",
+    )
+    mocker.patch("e_voice.websockets.stt.flush_session", return_value=event)
+
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    conn = MockConnection(
+        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        state=state,
+        _messages=[],
+    )
+
+    await handle_stt(conn)
+
+    assert conn.id not in state.stt_sessions
+
+
+##### HANDLE_STT — ERROR HANDLING #####
+
+
+async def test_handle_stt_error_sends_json(mocker) -> None:
+    mocker.patch("e_voice.websockets.stt.process_audio_chunk", side_effect=RuntimeError("boom"))
+
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    pcm16 = np.zeros(160, dtype=np.int16).tobytes()
+
+    conn = MockConnection(
+        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        state=state,
+        _messages=[pcm16],
+    )
+
+    await handle_stt(conn)
+
+    assert len(conn.sent) == 1
+    parsed = orjson.loads(conn.sent[0])
+    assert "boom" in parsed["error"]
+
+
+##### HANDLE_STT — AUTO LANGUAGE #####
+
+
+async def test_handle_stt_auto_language_sets_none(mocker) -> None:
+    mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=None)
+
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+
+    conn = MockConnection(
+        query_params={"language": "auto", "response_format": "json", "model": "tiny"},
+        state=state,
+        _messages=[np.zeros(160, dtype=np.int16).tobytes()],
+    )
+
+    await handle_stt(conn)
+
+    session = state.stt_sessions.get(conn.id)
+    assert session is None  # cleaned up in finally

@@ -175,6 +175,12 @@ class StreamingConfig(BaseModel):
     inactivity_flush_seconds: float = Field(default=3.0, ge=0.5)
 
 
+class WebSocketConfig(BaseModel):
+    """Standalone WebSocket server settings."""
+
+    port: int = Field(default=5700, ge=1, le=65535)
+
+
 class FrontConfig(BaseModel):
     """Gradio UI settings."""
 
@@ -203,6 +209,7 @@ class Settings(BaseSettings):
     tts: TTSConfig = TTSConfig()
     vad: VADConfig = VADConfig()
     streaming: StreamingConfig = StreamingConfig()
+    ws: WebSocketConfig = WebSocketConfig()
     front: FrontConfig = FrontConfig()
 
     model_config = SettingsConfigDict(
