@@ -217,10 +217,10 @@ def _download_model(model_id: str, service: str) -> str:
 
 
 def _load_logo_html() -> str:
-    logo_path = st.BASE_DIR / "assets" / "e-voice-landscape.svg"
+    logo_path = st.BASE_DIR / "assets" / "e-voice-landscape-front.svg"
     if not logo_path.exists():
         return ""
-    svg = logo_path.read_text().replace("#2D2D2A", "#06b6d4")
+    svg = logo_path.read_text()
     return f'<div style="display:flex;justify-content:center;padding:20px 0 8px">{svg}</div>'
 
 
@@ -228,7 +228,8 @@ def create_app() -> gr.Blocks:
     """Build the Gradio Blocks UI."""
     api = _api()
 
-    with gr.Blocks(title="e-voice") as app:
+    favicon = st.BASE_DIR / "assets" / "e-voice-icon-front.svg"
+    with gr.Blocks(title="e-voice", favicon_path=str(favicon) if favicon.exists() else None) as app:
         gr.HTML(_load_logo_html())
 
         with gr.Tabs():
