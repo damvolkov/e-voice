@@ -122,10 +122,10 @@ async def test_handle_stt_end_of_audio_flushes(mocker) -> None:
     assert parsed["is_final"] is True
 
 
-##### HANDLE_STT — NONE EVENT SKIPPED #####
+##### HANDLE_STT — NONE EVENT SENDS ACK #####
 
 
-async def test_handle_stt_none_event_skipped(mocker) -> None:
+async def test_handle_stt_none_event_sends_ack(mocker) -> None:
     mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=None)
 
     state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
@@ -139,7 +139,12 @@ async def test_handle_stt_none_event_skipped(mocker) -> None:
 
     await handle_stt(conn)
 
-    assert conn.sent == []
+    assert len(conn.sent) == 1
+    parsed = orjson.loads(conn.sent[0])
+    assert parsed["type"] == "transcript_update"
+    assert parsed["text"] == ""
+    assert parsed["partial"] == ""
+    assert parsed["is_final"] is False
 
 
 ##### HANDLE_STT — SESSION CLEANUP #####

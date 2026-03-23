@@ -8,7 +8,13 @@ from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
 from e_voice.core.websocket import Connection, WebSocketRouter
-from e_voice.streaming.transcriber import SessionState, StreamingEvent, flush_session, process_audio_chunk
+from e_voice.streaming.transcriber import (
+    SessionState,
+    StreamingEvent,
+    StreamingEventType,
+    flush_session,
+    process_audio_chunk,
+)
 
 router = WebSocketRouter()
 
@@ -59,6 +65,13 @@ async def handle_stt(conn: Connection) -> None:
                     samples = Audio.pcm16_to_float32(base64.b64decode(msg))
 
             if (event := await process_audio_chunk(session, conn.state.whisper, samples)) is None:
+                ack = StreamingEvent(
+                    type=StreamingEventType.TRANSCRIPT_UPDATE,
+                    confirmed_text=session.confirmed.text,
+                    unconfirmed_text=session.agreement.unconfirmed_text,
+                    new_confirmed="",
+                )
+                await conn.send(format_event(ack, session.response_format))
                 continue
 
             if event.new_confirmed:
