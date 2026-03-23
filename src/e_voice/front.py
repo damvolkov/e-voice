@@ -228,8 +228,7 @@ def create_app() -> gr.Blocks:
     """Build the Gradio Blocks UI."""
     api = _api()
 
-    favicon = st.BASE_DIR / "assets" / "e-voice-icon-front.svg"
-    with gr.Blocks(title="e-voice", favicon_path=str(favicon) if favicon.exists() else None) as app:
+    with gr.Blocks(title="e-voice") as app:
         gr.HTML(_load_logo_html())
 
         with gr.Tabs():
@@ -341,9 +340,11 @@ def launch_background() -> None:
 
     def _run() -> None:
         app = create_app()
+        favicon = st.BASE_DIR / "assets" / "e-voice-icon-front.svg"
         app.launch(
             theme=_THEME,
             css=_CSS,
+            favicon_path=str(favicon) if favicon.exists() else None,
             server_name="0.0.0.0",
             server_port=st.front.port,
             share=st.front.share,
