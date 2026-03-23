@@ -72,17 +72,17 @@ async def _ws_tts_single(ws_url: str, text: str) -> str:
         return f"{type(e).__name__}:{e}"
 
 
-async def _http_tts_single(client: httpx.AsyncClient, text: str) -> str:
-    """One HTTP TTS request. Returns 'ok' or error description."""
+async def _http_tts_single(base_url: str, text: str) -> str:
+    """One HTTP TTS request with fresh client. Returns 'ok' or error description."""
     try:
-        resp = await client.post(
-            "/v1/audio/speech",
-            json={"input": text, "voice": "af_heart", "response_format": "pcm", "stream": False},
-            timeout=30.0,
-        )
-        if resp.status_code != 200:
-            return f"http_{resp.status_code}"
-        return "ok" if len(resp.content) > 0 else "empty"
+        async with httpx.AsyncClient(base_url=base_url, timeout=30.0) as client:
+            resp = await client.post(
+                "/v1/audio/speech",
+                json={"input": text, "voice": "af_heart", "response_format": "pcm", "stream": False},
+            )
+            if resp.status_code != 200:
+                return f"http_{resp.status_code}"
+            return "ok" if len(resp.content) > 0 else "empty"
     except Exception as e:
         return f"{type(e).__name__}:{e}"
 
@@ -182,7 +182,6 @@ async def test_ws_tts_concurrent_bursts(
     ids=[c[1] for c in _HTTP_SEQUENTIAL_CASES],
 )
 async def test_http_tts_sequential(
-    http_client: httpx.AsyncClient,
     base_url: str,
     count: int,
     label: str,
@@ -192,7 +191,7 @@ async def test_http_tts_sequential(
     results: list[str] = []
 
     for i in range(count):
-        result = await _http_tts_single(http_client, _SHORT_TEXT)
+        result = await _http_tts_single(base_url, _SHORT_TEXT)
         results.append(result)
         if result != "ok" and not await _health_ok(base_url):
             results.extend(["server_down"] * (count - i - 1))
@@ -210,7 +209,6 @@ async def test_http_tts_sequential(
     ids=[c[2] for c in _MIXED_CASES],
 )
 async def test_mixed_ws_and_http(
-    http_client: httpx.AsyncClient,
     base_url: str,
     ws_base_url: str,
     ws_count: int,
@@ -226,7 +224,7 @@ async def test_mixed_ws_and_http(
         if i < ws_count:
             results.append(await _ws_tts_single(ws_url, _SHORT_TEXT))
         if i < http_count:
-            results.append(await _http_tts_single(http_client, _SHORT_TEXT))
+            results.append(await _http_tts_single(base_url, _SHORT_TEXT))
         if results[-1] != "ok" and not await _health_ok(base_url):
             results.append("server_down")
             break
