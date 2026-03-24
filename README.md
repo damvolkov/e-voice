@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/e-voice-landscape.svg" alt="e-voice" width="420">
+  <img src="assets/e-voice-landscape-dark.svg" alt="e-voice" width="420">
 </p>
 
 <p align="center">
@@ -24,14 +24,17 @@ Open `http://localhost:5500` — Gradio UI, API, and docs on one port.
 ```bash
 # Local development
 make install
-make dev              # API on :5500, Gradio UI on :5600
+make dev              # API on :5500, WS on :5700, Gradio UI on :5600
 ```
 
 | Service | Local | Docker |
 |---------|-------|--------|
 | Gradio UI | `localhost:5600` | `localhost:5500` |
-| API | `localhost:5500/v1/...` | `localhost:5500/v1/...` |
+| REST API | `localhost:5500/v1/...` | `localhost:5500/v1/...` |
+| WebSocket | `ws://localhost:5700/v1/...` | `ws://localhost:5500/v1/...` |
 | Docs | `localhost:5500/docs` | `localhost:5500/docs` |
+
+In Docker, nginx routes HTTP and WebSocket on the same port (`/v1/` paths auto-detect via `Upgrade` header).
 
 ---
 
@@ -43,7 +46,7 @@ Every endpoint is available via four transport protocols. Taxonomical aliases ma
 |---------|-----------|----------|-------|-------------|
 | **STT** | HTTP | `POST /v1/audio/transcriptions` | `/v1/stt/http` | `application/json`, `text/plain` |
 | **STT** | SSE | `POST /v1/audio/transcriptions` + `stream=true` | `/v1/stt/sse` | `text/event-stream` |
-| **STT** | WebSocket | `WS /v1/audio/transcriptions` | `WS /v1/stt/ws` | text frames (JSON) |
+| **STT** | WebSocket | `WS /v1/audio/transcriptions` | `WS /v1/stt/ws` | binary PCM16-LE or text (base64) |
 | **TTS** | HTTP | `POST /v1/audio/speech` + `stream=false` | `/v1/tts/http` | `audio/*` |
 | **TTS** | SSE | `POST /v1/audio/speech` + `stream_format=sse` | `/v1/tts/sse` | `text/event-stream` |
 | **TTS** | Streaming | `POST /v1/audio/speech` + `stream=true` | `/v1/tts/stream` | `audio/*` (chunked) |
@@ -123,8 +126,11 @@ Real-time streaming STT with LocalAgreement.
 
 **Protocol**:
 1. Connect with optional query params
-2. Send base64-encoded PCM16 audio chunks (16kHz mono) as text frames
-3. Receive streaming transcription events
+2. Send audio chunks (16kHz mono):
+   - **Binary frames** (recommended): raw PCM16-LE bytes — zero overhead, industry standard
+   - **Text frames** (backward compat): base64-encoded PCM16
+3. Send `END_OF_AUDIO` as text frame to flush the session
+4. Receive streaming transcription events
 
 **Response** (`response_format=json`):
 
@@ -137,10 +143,12 @@ Real-time streaming STT with LocalAgreement.
 When `response_format=text`: returns confirmed text as plain string.
 
 **Features**:
+- **Binary PCM16-LE frames** — same format as OpenAI Realtime, Deepgram, Azure Speech, AssemblyAI
 - LocalAgreement — words are never retracted once confirmed
 - Sentence-boundary finalization + same-output detection
 - Bounded audio buffer (45s max) with context re-transcription
 - Per-connection state with automatic cleanup
+- Base64 text frames still supported for backward compatibility
 
 ### Text-to-Speech (TTS)
 
@@ -248,17 +256,23 @@ make lint          # ruff check --fix + format
 make type          # ty type check
 make test          # unit tests (parallel, coverage >90%)
 make check         # lint + type + test
-make stt           # mic -> WebSocket STT (ffmpeg + websocat)
-make tts           # text -> TTS with playback (curl + aplay)
+make stt           # mic -> WebSocket STT binary PCM16 (ffmpeg + websocat)
+make tts           # text -> TTS with playback (curl + ffplay)
+make kill          # free ports 5500/5700/5600
 ```
 
 ## Web UI (Gradio)
+
+<p align="center">
+  <img src="assets/front.png" alt="e-voice Gradio UI" width="720">
+</p>
 
 Launches automatically alongside the API:
 
 - **Live Mic** — real-time WebSocket STT from browser microphone
 - **Speech-to-Text** — upload audio, select model/language, transcribe (with SSE streaming)
-- **Text-to-Speech** — enter text, pick voice/speed, synthesize audio
+- **Text-to-Speech** — enter text, pick voice/speed, synthesize audio (voices grouped by language)
+- **Voices** — browse all available voices organized by language (9 languages, 50+ voices)
 - **Models** — view and download STT/TTS models
 
 | Environment | URL |
@@ -279,10 +293,10 @@ system:
 
 stt:
   model: "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
-  device: cuda
+  device: gpu           # gpu, cpu, or auto
 
 tts:
-  device: cuda
+  device: gpu
   default_voice: af_heart
 
 front:
