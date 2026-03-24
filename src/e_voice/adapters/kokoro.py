@@ -24,7 +24,7 @@ type AudioChunk = tuple[NDArray[np.float32], int]
 
 def _resolve_provider(device: str) -> OnnxProvider:
     """Resolve ONNX provider with fallback to CPU."""
-    desired = OnnxProvider.CUDA if device == "cuda" else OnnxProvider.CPU
+    desired = OnnxProvider.CUDA if device in ("gpu", "cuda") else OnnxProvider.CPU
 
     if desired in ort.get_available_providers():  # ty: ignore[possibly-missing-attribute]
         return desired

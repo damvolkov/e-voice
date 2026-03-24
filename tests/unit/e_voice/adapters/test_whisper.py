@@ -20,7 +20,7 @@ from e_voice.models.stt import InferenceParams, ModelSpec
 
 
 async def test_model_spec_frozen() -> None:
-    spec = ModelSpec(model_id="test", device="cuda", compute_type="float16")
+    spec = ModelSpec(model_id="test", device="gpu", compute_type="float16")
     with pytest.raises(AttributeError):
         spec.model_id = "other"  # ty: ignore[invalid-assignment]
 
@@ -32,8 +32,8 @@ async def test_model_spec_defaults() -> None:
 
 
 async def test_model_spec_equality() -> None:
-    a = ModelSpec(model_id="m", device="cuda", compute_type="float16")
-    b = ModelSpec(model_id="m", device="cuda", compute_type="float16")
+    a = ModelSpec(model_id="m", device="gpu", compute_type="float16")
+    b = ModelSpec(model_id="m", device="gpu", compute_type="float16")
     c = ModelSpec(model_id="m", device="cpu")
     assert a == b
     assert a != c
@@ -41,9 +41,9 @@ async def test_model_spec_equality() -> None:
 
 async def test_model_spec_hashable() -> None:
     specs = {
-        ModelSpec(model_id="m", device="cuda"),
+        ModelSpec(model_id="m", device="gpu"),
         ModelSpec(model_id="m", device="cpu"),
-        ModelSpec(model_id="m", device="cuda"),
+        ModelSpec(model_id="m", device="gpu"),
     }
     assert len(specs) == 2
 
@@ -77,7 +77,7 @@ async def test_adapter_init_default_config() -> None:
 @pytest.mark.parametrize(
     ("device", "compute"),
     [
-        (DeviceType.CUDA, ComputeType.FLOAT16),
+        (DeviceType.GPU, ComputeType.FLOAT16),
         (DeviceType.CPU, ComputeType.INT8),
         (DeviceType.AUTO, ComputeType.DEFAULT),
     ],
@@ -138,9 +138,9 @@ async def test_resolve_raises_not_loaded() -> None:
 
 
 async def test_resolve_falls_back_to_default_config(mocker) -> None:
-    config = STTConfig(device=DeviceType.CUDA, compute_type=ComputeType.FLOAT16)
+    config = STTConfig(device=DeviceType.GPU, compute_type=ComputeType.FLOAT16)
     adapter = WhisperAdapter(config=config)
-    spec = ModelSpec(model_id=st.stt.model, device="cuda", compute_type="float16")
+    spec = ModelSpec(model_id=st.stt.model, device="gpu", compute_type="float16")
     mocker.patch.object(adapter, "_create_model", return_value=mocker.MagicMock())
     await adapter.load(spec)
     model = adapter._resolve(None)

@@ -368,11 +368,12 @@ class WhisperAdapter(BaseModelAdapter):
 
     def _create_model(self, spec: ModelSpec) -> WhisperModel:
         """Instantiate WhisperModel (CPU-bound, runs in thread)."""
+        device = DeviceType(spec.device)
         return WhisperModel(
             spec.model_id,
-            device=spec.device,
+            device=device.runtime,
             device_index=self._config.device_index,
-            compute_type=str(resolve_compute_type(DeviceType(spec.device), ComputeType(spec.compute_type))),
+            compute_type=str(resolve_compute_type(device, ComputeType(spec.compute_type))),
             cpu_threads=self._config.cpu_threads,
             num_workers=self._config.num_workers,
             download_root=str(st.MODELS_PATH / "stt"),

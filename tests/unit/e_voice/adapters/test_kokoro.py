@@ -58,9 +58,9 @@ async def test_synthesis_params_frozen() -> None:
 ##### ONNX PROVIDER RESOLUTION #####
 
 
-async def test_resolve_provider_cuda(mocker) -> None:
+async def test_resolve_provider_gpu(mocker) -> None:
     mocker.patch("onnxruntime.get_available_providers", return_value=["CUDAExecutionProvider", "CPUExecutionProvider"])
-    assert _resolve_provider("cuda") == OnnxProvider.CUDA
+    assert _resolve_provider("gpu") == OnnxProvider.CUDA
 
 
 async def test_resolve_provider_cpu(mocker) -> None:
@@ -68,9 +68,9 @@ async def test_resolve_provider_cpu(mocker) -> None:
     assert _resolve_provider("cpu") == OnnxProvider.CPU
 
 
-async def test_resolve_provider_cuda_fallback_to_cpu(mocker) -> None:
+async def test_resolve_provider_gpu_fallback_to_cpu(mocker) -> None:
     mocker.patch("onnxruntime.get_available_providers", return_value=["CPUExecutionProvider"])
-    assert _resolve_provider("cuda") == OnnxProvider.CPU
+    assert _resolve_provider("gpu") == OnnxProvider.CPU
 
 
 ##### MODEL SPEC #####
@@ -84,9 +84,9 @@ async def test_tts_model_spec_defaults() -> None:
 
 async def test_tts_model_spec_hashable() -> None:
     specs = {
-        TTSModelSpec(device=DeviceType.CUDA),
+        TTSModelSpec(device=DeviceType.GPU),
         TTSModelSpec(device=DeviceType.CPU),
-        TTSModelSpec(device=DeviceType.CUDA),
+        TTSModelSpec(device=DeviceType.GPU),
     }
     assert len(specs) == 2
 

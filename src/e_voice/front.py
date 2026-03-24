@@ -340,7 +340,7 @@ def launch_background() -> None:
 
     def _run() -> None:
         app = create_app()
-        favicon = st.BASE_DIR / "assets" / "e-voice-icon-front.svg"
+        favicon = st.BASE_DIR / "assets" / "e-voice-icon-front.png"
         app.launch(
             theme=_THEME,
             css=_CSS,

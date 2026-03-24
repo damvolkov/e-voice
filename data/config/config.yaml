@@ -7,9 +7,9 @@ system:
 
 stt:
   model: "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
-  device: cuda
+  device: gpu
   device_index: 0
-  compute_type: float16
+  compute_type: int8
   cpu_threads: 0
   num_workers: 1
   default_language: es
@@ -17,7 +17,7 @@ stt:
   cpu_fallback: true
 
 tts:
-  device: cuda
+  device: gpu
   default_voice: af_heart
   default_speed: 1.0
 

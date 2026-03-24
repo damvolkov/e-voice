@@ -24,7 +24,7 @@ export LD_LIBRARY_PATH := $(NVIDIA_LIBS):$(LD_LIBRARY_PATH)
 COMPOSE_FILE := compose.yml
 
 .PHONY: help install sync lock lint type test test-integration check \
-        dev stt tts docker-up docker-down docker-build log clean
+        kill dev stt tts docker-up docker-down docker-build log clean
 
 
 # Help
@@ -113,9 +113,16 @@ check: lint type test
 
 # Development — API on :5500, WS on :5700, Gradio on :5600
 
-dev:
-	@echo "$(CYAN)=== API: http://localhost:$(SERVICE_PORT) | Gradio: http://localhost:$(GRADIO_PORT) [reload] ===$(RESET)"
-	@LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -m robyn src/e_voice/main.py --dev
+kill:
+	@for port in $(SERVICE_PORT) $(WS_PORT) $(GRADIO_PORT); do \
+		lsof -i :$$port -t 2>/dev/null | xargs -r kill -9; \
+	done
+	@echo "$(GREEN)=== Ports $(SERVICE_PORT)/$(WS_PORT)/$(GRADIO_PORT) freed ===$(RESET)"
+
+dev: kill
+	@echo "$(CYAN)=== API: http://localhost:$(SERVICE_PORT) | WS: ws://localhost:$(WS_PORT) | Gradio: http://localhost:$(GRADIO_PORT) ===$(RESET)"
+	@trap 'make -s kill' EXIT; \
+	LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -m robyn src/e_voice/main.py --dev
 
 
 # Live test (requires running server — works with both local and docker)

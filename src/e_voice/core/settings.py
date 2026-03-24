@@ -51,7 +51,12 @@ def get_version(base_dir: Path) -> str:
 class DeviceType(StrEnum):
     AUTO = auto()
     CPU = auto()
-    CUDA = auto()
+    GPU = auto()
+
+    @property
+    def runtime(self) -> str:
+        """Runtime identifier for ML libraries (faster-whisper, ONNX). GPU → 'cuda'."""
+        return "cuda" if self == DeviceType.GPU else self.value
 
 
 class ComputeType(StrEnum):
@@ -88,7 +93,7 @@ def resolve_compute_type(device: DeviceType, compute_type: ComputeType) -> Compu
     """Pick optimal compute_type when 'default' based on resolved device."""
     if compute_type != ComputeType.DEFAULT:
         return compute_type
-    if device == DeviceType.CUDA:
+    if device == DeviceType.GPU:
         return _GPU_COMPUTE
     if device == DeviceType.CPU:
         return _CPU_COMPUTE
@@ -116,7 +121,7 @@ class STTConfig(BaseModel):
     """Speech-to-Text (faster-whisper) settings."""
 
     model: str = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
-    device: DeviceType = DeviceType.CUDA
+    device: DeviceType = DeviceType.GPU
     device_index: int = Field(default=0, ge=0)
     compute_type: ComputeType = ComputeType.FLOAT16
     cpu_threads: int = Field(default=0, ge=0)
@@ -133,7 +138,7 @@ class STTConfig(BaseModel):
 class TTSConfig(BaseModel):
     """Text-to-Speech (Kokoro-ONNX) settings."""
 
-    device: DeviceType = DeviceType.CUDA
+    device: DeviceType = DeviceType.GPU
     sample_rate: int = Field(default=24_000, ge=8000, le=48000)
     default_voice: str = "af_heart"
     default_speed: float = Field(default=1.0, ge=0.1, le=5.0)

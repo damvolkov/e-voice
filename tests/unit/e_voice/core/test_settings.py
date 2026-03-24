@@ -24,11 +24,11 @@ from e_voice.core.settings import (
 @pytest.mark.parametrize(
     ("device", "compute_type", "expected"),
     [
-        (DeviceType.CUDA, ComputeType.DEFAULT, ComputeType.FLOAT16),
+        (DeviceType.GPU, ComputeType.DEFAULT, ComputeType.FLOAT16),
         (DeviceType.CPU, ComputeType.DEFAULT, ComputeType.INT8),
-        (DeviceType.CUDA, ComputeType.INT8, ComputeType.INT8),
+        (DeviceType.GPU, ComputeType.INT8, ComputeType.INT8),
         (DeviceType.CPU, ComputeType.FLOAT32, ComputeType.FLOAT32),
-        (DeviceType.CUDA, ComputeType.BFLOAT16, ComputeType.BFLOAT16),
+        (DeviceType.GPU, ComputeType.BFLOAT16, ComputeType.BFLOAT16),
     ],
     ids=["cuda-default", "cpu-default", "cuda-explicit", "cpu-explicit", "cuda-bfloat16"],
 )
@@ -71,7 +71,7 @@ async def test_vad_config_to_dict_keys() -> None:
 
 async def test_stt_config_defaults() -> None:
     cfg = STTConfig()
-    assert cfg.device == DeviceType.CUDA
+    assert cfg.device == DeviceType.GPU
     assert cfg.compute_type == ComputeType.FLOAT16
     assert cfg.num_workers == 1
 
@@ -88,7 +88,7 @@ async def test_stt_config_custom() -> None:
 
 async def test_tts_config_defaults() -> None:
     cfg = TTSConfig()
-    assert cfg.device == DeviceType.CUDA
+    assert cfg.device == DeviceType.GPU
     assert cfg.default_voice == "af_heart"
     assert cfg.default_speed == 1.0
 
