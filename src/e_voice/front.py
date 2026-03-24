@@ -164,12 +164,23 @@ _LANG_LABELS: dict[str, str] = {
 }
 
 
-def _fetch_voice_choices() -> list[str]:
-    """Fetch available voices from API, sorted by language then name."""
+def _fetch_voice_choices() -> list[tuple[str, str]]:
+    """Fetch voices grouped by language. Returns (label, value) tuples for Dropdown."""
     voices = _api().get_voices()
     if not voices:
-        return ["af_heart"]
-    return [v["id"] for v in sorted(voices, key=lambda v: (v.get("language", ""), v["id"]))]
+        return [("af_heart", "af_heart")]
+
+    grouped: dict[str, list[str]] = {}
+    for v in sorted(voices, key=lambda v: (v.get("language", ""), v["id"])):
+        grouped.setdefault(v.get("language", "unknown"), []).append(v["id"])
+
+    choices: list[tuple[str, str]] = []
+    for lang in sorted(grouped):
+        label = _LANG_LABELS.get(lang, lang)
+        first = grouped[lang][0]
+        choices.append((f"── {label} ──", first))
+        choices.extend((vid, vid) for vid in grouped[lang])
+    return choices
 
 
 def _format_voices_display() -> str:
@@ -289,9 +300,13 @@ def create_app() -> gr.Blocks:
                     with gr.Column(scale=1):
                         tts_text = gr.Textbox(label="Text", lines=4, placeholder="Enter text to synthesize...")
                         voice_choices = _fetch_voice_choices()
+                        voice_values = [v for _, v in voice_choices]
+                        default_voice = (
+                            st.tts.default_voice if st.tts.default_voice in voice_values else voice_values[0]
+                        )
                         tts_voice = gr.Dropdown(
                             choices=voice_choices,
-                            value=st.tts.default_voice if st.tts.default_voice in voice_choices else voice_choices[0],
+                            value=default_voice,
                             label="Voice",
                         )
                         tts_speed = gr.Slider(0.5, 2.0, value=st.tts.default_speed, step=0.1, label="Speed")
