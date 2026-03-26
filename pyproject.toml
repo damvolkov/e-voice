@@ -48,6 +48,8 @@ dependencies = [
     "nvidia-cublas-cu12>=12.9.1.4",
     "nvidia-cudnn-cu12>=9.20.0.48",
     "ovld>=0.5.14",
+    "psutil>=7.2.2",
+    "nvidia-ml-py>=13.595.45",
 ]
 
 [project.scripts]

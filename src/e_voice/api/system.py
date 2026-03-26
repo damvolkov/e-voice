@@ -1,4 +1,4 @@
-"""System API — model download, management, and loaded-model endpoints."""
+"""System API — model download, management, device control, and loaded-model endpoints."""
 
 from pathlib import Path
 from urllib.parse import unquote
@@ -10,6 +10,7 @@ from e_voice.adapters.kokoro import KokoroAdapter
 from e_voice.adapters.whisper import WhisperAdapter
 from e_voice.core.logger import logger
 from e_voice.core.router import Router
+from e_voice.core.settings import DeviceType
 from e_voice.core.settings import settings as st
 from e_voice.models.error import error_response
 from e_voice.models.system import (
@@ -20,6 +21,7 @@ from e_voice.models.system import (
     ModelsListResponse,
     ServiceType,
 )
+from e_voice.operational.controller import DeviceController
 
 router = Router(__file__, prefix="/v1")
 
@@ -162,3 +164,52 @@ async def unload_model(request: Request, model_id: str, global_dependencies) -> 
             )
 
     return error_response(request.url.path, 404, f"Model '{model_id}' is not loaded", error_type="not_found_error")
+
+
+##### DEVICE CONTROL #####
+
+
+@router.get("/system/device")
+async def get_device(global_dependencies) -> Response:
+    """Return current device mode and transition state."""
+    ctrl: DeviceController = global_dependencies.get("state").device_controller
+    return Response(
+        status_code=status_codes.HTTP_200_OK,
+        headers={"content-type": "application/json"},
+        description=orjson.dumps(
+            {
+                "device": ctrl.active_device.value,
+                "state": ctrl.state.value,
+                "transitioning": ctrl.transitioning,
+            }
+        ).decode(),
+    )
+
+
+@router.post("/system/device")
+async def switch_device(request: Request, global_dependencies) -> Response:
+    """Switch STT+TTS to a different device (gpu/cpu)."""
+    body = orjson.loads(request.body)
+    target_str = body.get("device", "").lower()
+
+    if target_str not in ("gpu", "cpu"):
+        return error_response(request.url.path, 400, f"Invalid device: '{target_str}'. Use 'gpu' or 'cpu'.")
+
+    target = DeviceType.GPU if target_str == "gpu" else DeviceType.CPU
+    ctrl: DeviceController = global_dependencies.get("state").device_controller
+    whisper: WhisperAdapter = global_dependencies.get("state").whisper
+    kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
+
+    result = await ctrl.switch(target, whisper, kokoro)
+
+    return Response(
+        status_code=status_codes.HTTP_200_OK if result.success else status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
+        headers={"content-type": "application/json"},
+        description=orjson.dumps(
+            {
+                "success": result.success,
+                "device": result.device.value,
+                "message": result.message,
+            }
+        ).decode(),
+    )

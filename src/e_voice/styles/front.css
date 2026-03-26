@@ -1,0 +1,50 @@
+/* e-voice Gradio frontend styles — loaded on the fly via STYLES_PATH */
+
+/* ── Base overrides ───────────────────────────────────────────────────────── */
+footer { display: none !important; }
+
+/* ── Tab navigation ───────────────────────────────────────────────────────── */
+.tab-nav button { color: #6b7f82 !important; border-color: transparent !important; }
+.tab-nav button.selected { color: #06b6d4 !important; border-color: #0891b2 !important; }
+
+/* ── Audio input — hide native device selector ────────────────────────────── */
+.hide-device-select .audio-input-select { display: none !important; }
+.hide-device-select select { display: none !important; }
+
+/* ── Header layout — vertical center both columns ─────────────────────────── */
+#header-row { display: flex !important; align-items: center !important; }
+#header-row > div { display: flex !important; align-items: center !important; }
+
+/* ── Monitor card ─────────────────────────────────────────────────────────── */
+#monitor-card {
+    padding: 14px 20px 10px 20px;
+    min-width: 340px;
+    background: #111820 !important;
+    border: 1px solid #1a3a4a !important;
+    border-radius: 10px !important;
+}
+#monitor-card .gr-group {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* ── Device switch button — small pill ────────────────────────────────────── */
+#device-switch-btn {
+    min-width: 0 !important;
+    padding: 2px 12px !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px !important;
+    border-radius: 4px !important;
+    height: 22px !important;
+    line-height: 22px !important;
+    opacity: 0.85;
+    transition: opacity 0.2s ease !important;
+}
+#device-switch-btn:hover { opacity: 1 !important; }
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}

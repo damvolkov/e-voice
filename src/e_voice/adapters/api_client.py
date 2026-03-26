@@ -192,6 +192,26 @@ class APIClient:
         except Exception as exc:
             return f"Error: {exc}"
 
+    def get_device(self) -> dict:
+        """Return current device state."""
+        try:
+            with self._http() as c:
+                resp = c.get("/v1/system/device")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception:
+            return {"device": "unknown", "state": "unknown", "transitioning": False}
+
+    def switch_device(self, device: str) -> dict:
+        """Switch to target device (gpu/cpu). Returns result dict."""
+        try:
+            with self._http() as c:
+                resp = c.post("/v1/system/device", json={"device": device}, timeout=120.0)
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as exc:
+            return {"success": False, "device": device, "message": str(exc)}
+
 
 ##### LIVE STREAM (WebSocket STT) #####
 

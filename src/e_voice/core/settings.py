@@ -208,6 +208,7 @@ class Settings(BaseSettings):
     DATA_PATH: ClassVar[Path] = BASE_DIR / "data"
     MODELS_PATH: ClassVar[Path] = DATA_PATH / "models"
     CONFIG_PATH: ClassVar[Path] = DATA_PATH / "config"
+    STYLES_PATH: ClassVar[Path] = BASE_DIR / "src" / "e_voice" / "styles"
 
     system: SystemConfig = SystemConfig()
     stt: STTConfig = STTConfig()

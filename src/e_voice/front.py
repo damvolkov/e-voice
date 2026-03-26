@@ -1,6 +1,8 @@
 """Gradio UI for e-voice — STT/TTS playground + model management."""
 
+import base64
 import threading
+from collections.abc import Iterable
 from pathlib import Path
 
 import gradio as gr
@@ -8,6 +10,7 @@ import gradio as gr
 from e_voice.adapters.api_client import APIClient, create_stream, remove_stream, send_stream_chunk
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
+from e_voice.operational.monitor import SystemMonitor
 
 ##### THEME #####
 
@@ -18,35 +21,35 @@ _THEME = gr.themes.Base(
     font=gr.themes.GoogleFont("JetBrains Mono"),
     font_mono=gr.themes.GoogleFont("JetBrains Mono"),
 ).set(
-    body_background_fill="#050508",
-    body_background_fill_dark="#050508",
-    block_background_fill="#0d1117",
-    block_background_fill_dark="#0d1117",
-    block_border_color="#1e3a4f",
-    block_border_color_dark="#1e3a4f",
+    body_background_fill="#0a0e14",
+    body_background_fill_dark="#0a0e14",
+    block_background_fill="#111820",
+    block_background_fill_dark="#111820",
+    block_border_color="#1a3a4a",
+    block_border_color_dark="#1a3a4a",
     block_label_text_color="#7dd3d8",
     block_label_text_color_dark="#7dd3d8",
     block_title_text_color="#7dd3d8",
     block_title_text_color_dark="#7dd3d8",
     body_text_color="#c8d6d8",
     body_text_color_dark="#c8d6d8",
-    body_text_color_subdued="#5a7a7e",
-    body_text_color_subdued_dark="#5a7a7e",
+    body_text_color_subdued="#6b7f82",
+    body_text_color_subdued_dark="#6b7f82",
     button_primary_background_fill="#0891b2",
     button_primary_background_fill_dark="#0891b2",
     button_primary_background_fill_hover="#06b6d4",
     button_primary_text_color="#000",
     button_primary_text_color_dark="#000",
-    button_secondary_background_fill="#0d1117",
-    button_secondary_background_fill_dark="#0d1117",
-    button_secondary_border_color="#1e3a4f",
-    button_secondary_border_color_dark="#1e3a4f",
+    button_secondary_background_fill="#111820",
+    button_secondary_background_fill_dark="#111820",
+    button_secondary_border_color="#1a3a4a",
+    button_secondary_border_color_dark="#1a3a4a",
     button_secondary_text_color="#7dd3d8",
     button_secondary_text_color_dark="#7dd3d8",
-    input_background_fill="#0a0f14",
-    input_background_fill_dark="#0a0f14",
-    input_border_color="#1e3a4f",
-    input_border_color_dark="#1e3a4f",
+    input_background_fill="#0a0e14",
+    input_background_fill_dark="#0a0e14",
+    input_border_color="#1a3a4a",
+    input_border_color_dark="#1a3a4a",
     input_placeholder_color="#3a5a5e",
     input_placeholder_color_dark="#3a5a5e",
     border_color_accent="#0891b2",
@@ -57,13 +60,15 @@ _THEME = gr.themes.Base(
     slider_color_dark="#0891b2",
 )
 
-_CSS = """
-footer { display: none !important; }
-.tab-nav button { color: #5a7a7e !important; border-color: transparent !important; }
-.tab-nav button.selected { color: #06b6d4 !important; border-color: #0891b2 !important; }
-.hide-device-select .audio-input-select { display: none !important; }
-.hide-device-select select { display: none !important; }
-"""
+_CSS_PATH = st.STYLES_PATH / "front.css"
+_CSS = _CSS_PATH.read_text() if _CSS_PATH.exists() else ""
+
+_monitor = SystemMonitor()
+
+_LOGO_HEIGHT = 160
+_SPARK_W = 80
+_SPARK_H = 20
+_DEVICE_COLORS: dict[str, str] = {"gpu": "#66bb6a", "cpu": "#2196f3", "transitioning": "#ffb74d"}
 
 
 ##### HELPERS #####
@@ -224,24 +229,155 @@ def _download_model(model_id: str, service: str) -> str:
     return _api().download_model(model_id, service)
 
 
-##### APP FACTORY #####
+##### MONITOR — SVG SPARKLINES #####
+
+
+def _bar_color(pct: float) -> str:
+    if pct < 60:
+        return "#66bb6a"
+    return "#ffb74d" if pct < 85 else "#ef5350"
+
+
+def _svg_sparkline(history: Iterable[float], color: str) -> str:
+    """Generate an inline SVG sparkline with area fill from history data."""
+    data = list(history)
+    if len(data) < 2:
+        return f'<svg width="{_SPARK_W}" height="{_SPARK_H}"></svg>'
+    step = _SPARK_W / (len(data) - 1)
+    points = [f"{i * step:.1f},{_SPARK_H - (v / 100 * _SPARK_H):.1f}" for i, v in enumerate(data)]
+    pts = " ".join(points)
+    area_pts = f"0,{_SPARK_H} {pts} {_SPARK_W},{_SPARK_H}"
+    return (
+        f'<svg width="{_SPARK_W}" height="{_SPARK_H}" style="flex-shrink:0">'
+        f'<polygon points="{area_pts}" fill="{color}20" />'
+        f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="1.2" />'
+        f"</svg>"
+    )
+
+
+##### MONITOR — HTML BUILDER #####
+
+
+def _build_monitor_html() -> str:
+    """Build full monitor card: semaphore row + metric bars + sparklines."""
+    device_info = _api().get_device()
+    device = device_info.get("device", "unknown")
+    state = device_info.get("state", "unknown")
+    sem_color = _DEVICE_COLORS.get(state, "#666")
+    pulse = "animation:pulse 1.4s ease-in-out infinite;" if state == "transitioning" else ""
+
+    snap = _monitor.poll()
+
+    metrics = [
+        (
+            "VRAM",
+            snap.vram_pct if snap.gpu_available else 0,
+            f"{snap.vram_used_mb // 1024}/{snap.vram_total_mb // 1024}G" if snap.gpu_available else "n/a",
+            _monitor.vram_history,
+        ),
+        (
+            "GPU",
+            snap.gpu_util_pct if snap.gpu_available else 0,
+            f"{snap.gpu_util_pct:.0f}%" if snap.gpu_available else "n/a",
+            _monitor.gpu_util_history,
+        ),
+        ("CPU", snap.cpu_pct, f"{snap.cpu_pct:.0f}%", _monitor.cpu_history),
+        ("RAM", snap.ram_pct, f"{int(snap.ram_used_gb)}/{int(snap.ram_total_gb)}G", _monitor.ram_history),
+    ]
+
+    rows: list[str] = []
+    for label, pct, detail, history in metrics:
+        bcolor = _bar_color(pct)
+        sparkline = _svg_sparkline(history, bcolor)
+        rows.append(
+            f'<div style="display:flex;align-items:center;gap:8px;height:22px">'
+            f'<span style="font-size:11px;color:#6b7f82;width:38px;font-weight:600">{label}</span>'
+            f'<span style="font-size:11px;color:#c8d6d8;width:58px;text-align:right;'
+            f'font-variant-numeric:tabular-nums">{detail}</span>'
+            f'<div style="height:4px;flex:1;min-width:60px;border-radius:2px;background:#1a2332;overflow:hidden">'
+            f'<div style="height:100%;width:{pct:.0f}%;border-radius:2px;background:{bcolor};'
+            f'transition:width .3s ease"></div></div>'
+            f'<div style="margin-left:8px;flex-shrink:0">{sparkline}</div>'
+            f"</div>"
+        )
+
+    semaphore = (
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+        f'<div style="width:10px;height:10px;border-radius:50%;background:{sem_color};{pulse}"></div>'
+        f'<span style="font-size:13px;font-weight:600;color:#c8d6d8">{device.upper()}</span>'
+        f"</div>"
+    )
+    return semaphore + "\n".join(rows)
+
+
+##### MONITOR — CALLBACKS #####
+
+
+def _toggle_device() -> tuple[str, str]:
+    """Toggle GPU↔CPU. Returns updated monitor + new button label."""
+    device_info = _api().get_device()
+    current = device_info.get("device", "gpu")
+    target = "cpu" if current == "gpu" else "gpu"
+    _api().switch_device(target)
+    html = _build_monitor_html()
+    new_info = _api().get_device()
+    new_target = "cpu" if new_info.get("device") == "gpu" else "gpu"
+    return html, f"→ {new_target.upper()}"
+
+
+def _refresh_monitor() -> tuple[str, str]:
+    """Timer tick — refresh monitor HTML + button label."""
+    html = _build_monitor_html()
+    device_info = _api().get_device()
+    target = "cpu" if device_info.get("device") == "gpu" else "gpu"
+    return html, f"→ {target.upper()}"
+
+
+##### LOGO #####
 
 
 def _load_logo_html() -> str:
     logo_path = st.BASE_DIR / "assets" / "e-voice-landscape-front.svg"
     if not logo_path.exists():
         return ""
-    svg = logo_path.read_text()
-    return f'<div style="display:flex;justify-content:center;padding:20px 0 8px">{svg}</div>'
+    b64 = base64.b64encode(logo_path.read_bytes()).decode()
+    return (
+        f'<div style="display:flex;align-items:center;justify-content:center;height:100%">'
+        f'<img src="data:image/svg+xml;base64,{b64}" style="height:{_LOGO_HEIGHT}px" />'
+        f"</div>"
+    )
+
+
+##### APP FACTORY #####
 
 
 def create_app() -> gr.Blocks:
     """Build the Gradio Blocks UI."""
     api = _api()
+    device_info = api.get_device()
+    init_target = "cpu" if device_info.get("device") == "gpu" else "gpu"
 
     with gr.Blocks(title="e-voice") as app:
-        gr.HTML(_load_logo_html())
+        ##### HEADER — logo left, monitor right #####
+        with gr.Row(elem_id="header-row"):
+            with gr.Column(scale=1):
+                gr.HTML(_load_logo_html())
+            with gr.Column(min_width=360, scale=0), gr.Group(elem_id="monitor-card"), gr.Row():
+                monitor_html = gr.HTML(value=_build_monitor_html)
+                with gr.Column(min_width=70, scale=0):
+                    switch_btn = gr.Button(
+                        f"→ {init_target.upper()}",
+                        size="sm",
+                        variant="secondary",
+                        elem_id="device-switch-btn",
+                    )
 
+        switch_btn.click(fn=_toggle_device, outputs=[monitor_html, switch_btn])
+
+        mon_timer = gr.Timer(value=3)
+        mon_timer.tick(fn=_refresh_monitor, outputs=[monitor_html, switch_btn])
+
+        ##### TABS #####
         with gr.Tabs():
             ##### LIVE MIC TAB #####
             with gr.Tab("Live Mic"):

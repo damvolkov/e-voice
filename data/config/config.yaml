@@ -1,12 +1,11 @@
 system:
   debug: true
   environment: dev
-  host: "0.0.0.0"
+  host: 0.0.0.0
   port: 5500
   max_workers: 4
-
 stt:
-  model: "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+  model: mobiuslabsgmbh/faster-whisper-large-v3-turbo
   device: gpu
   device_index: 0
   compute_type: int8
@@ -15,12 +14,10 @@ stt:
   default_language: es
   default_response_format: text
   cpu_fallback: true
-
 tts:
   device: gpu
   default_voice: af_heart
   default_speed: 1.0
-
 vad:
   enabled: true
   threshold: 0.65
@@ -28,7 +25,6 @@ vad:
   max_speech_duration_s: .inf
   min_silence_duration_ms: 2000
   speech_pad_ms: 300
-
 streaming:
   min_duration: 0.75
   max_buffer_seconds: 45.0
@@ -36,7 +32,6 @@ streaming:
   same_output_threshold: 7
   no_speech_threshold: 0.45
   inactivity_flush_seconds: 3.0
-
 front:
   enabled: true
   port: 5600
