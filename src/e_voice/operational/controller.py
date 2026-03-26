@@ -11,7 +11,7 @@ import aiofiles
 import yaml
 
 from e_voice.core.logger import logger
-from e_voice.core.settings import DeviceType
+from e_voice.core.settings import ComputeType, DeviceType, resolve_compute_type
 from e_voice.core.settings import settings as st
 from e_voice.models.stt import ModelSpec
 from e_voice.models.tts import TTSModelSpec
@@ -72,10 +72,11 @@ class DeviceController:
 
         self._transitioning = True
         try:
+            resolved_compute = resolve_compute_type(target, ComputeType.DEFAULT)
             stt_spec = ModelSpec(
                 model_id=st.stt.model,
                 device=target.value,
-                compute_type=st.stt.compute_type.value,
+                compute_type=resolved_compute.value,
             )
             if not await whisper.is_loaded(stt_spec):
                 logger.info("loading STT on target device", step="MODEL", device=target.value)
