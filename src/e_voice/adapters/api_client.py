@@ -192,6 +192,27 @@ class APIClient:
         except Exception as exc:
             return f"Error: {exc}"
 
+    def get_monitor(self) -> dict:
+        """Poll system metrics snapshot with sparkline history."""
+        try:
+            with self._http() as c:
+                resp = c.get("/v1/system/monitor")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception:
+            return {
+                "cpu_pct": 0,
+                "ram_used_gb": 0,
+                "ram_total_gb": 0,
+                "ram_pct": 0,
+                "gpu_util_pct": 0,
+                "vram_used_mb": 0,
+                "vram_total_mb": 0,
+                "vram_pct": 0,
+                "gpu_available": False,
+                "history": {"cpu": [], "ram": [], "gpu_util": [], "vram": []},
+            }
+
     def get_device(self) -> dict:
         """Return current device state."""
         try:

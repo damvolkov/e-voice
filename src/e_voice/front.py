@@ -10,7 +10,6 @@ import gradio as gr
 from e_voice.adapters.api_client import APIClient, create_stream, remove_stream, send_stream_chunk
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
-from e_voice.operational.monitor import SystemMonitor
 
 ##### THEME #####
 
@@ -62,8 +61,6 @@ _THEME = gr.themes.Base(
 
 _CSS_PATH = st.STYLES_PATH / "front.css"
 _CSS = _CSS_PATH.read_text() if _CSS_PATH.exists() else ""
-
-_monitor = SystemMonitor()
 
 _LOGO_HEIGHT = 160
 _SPARK_W = 80
@@ -260,35 +257,43 @@ def _svg_sparkline(history: Iterable[float], color: str) -> str:
 
 def _build_monitor_html() -> str:
     """Build full monitor card: semaphore row + metric bars + sparklines."""
-    device_info = _api().get_device()
+    api = _api()
+    device_info = api.get_device()
     device = device_info.get("device", "unknown")
     state = device_info.get("state", "unknown")
     sem_color = _DEVICE_COLORS.get(state, "#666")
     pulse = "animation:pulse 1.4s ease-in-out infinite;" if state == "transitioning" else ""
 
-    snap = _monitor.poll()
+    m = api.get_monitor()
+    gpu_ok = m.get("gpu_available", False)
+    history = m.get("history", {})
 
     metrics = [
         (
             "VRAM",
-            snap.vram_pct if snap.gpu_available else 0,
-            f"{snap.vram_used_mb // 1024}/{snap.vram_total_mb // 1024}G" if snap.gpu_available else "n/a",
-            _monitor.vram_history,
+            m.get("vram_pct", 0) if gpu_ok else 0,
+            f"{m.get('vram_used_mb', 0) // 1024}/{m.get('vram_total_mb', 0) // 1024}G" if gpu_ok else "n/a",
+            history.get("vram", []),
         ),
         (
             "GPU",
-            snap.gpu_util_pct if snap.gpu_available else 0,
-            f"{snap.gpu_util_pct:.0f}%" if snap.gpu_available else "n/a",
-            _monitor.gpu_util_history,
+            m.get("gpu_util_pct", 0) if gpu_ok else 0,
+            f"{m.get('gpu_util_pct', 0):.0f}%" if gpu_ok else "n/a",
+            history.get("gpu_util", []),
         ),
-        ("CPU", snap.cpu_pct, f"{snap.cpu_pct:.0f}%", _monitor.cpu_history),
-        ("RAM", snap.ram_pct, f"{int(snap.ram_used_gb)}/{int(snap.ram_total_gb)}G", _monitor.ram_history),
+        ("CPU", m.get("cpu_pct", 0), f"{m.get('cpu_pct', 0):.0f}%", history.get("cpu", [])),
+        (
+            "RAM",
+            m.get("ram_pct", 0),
+            f"{int(m.get('ram_used_gb', 0))}/{int(m.get('ram_total_gb', 0))}G",
+            history.get("ram", []),
+        ),
     ]
 
     rows: list[str] = []
-    for label, pct, detail, history in metrics:
+    for label, pct, detail, hist in metrics:
         bcolor = _bar_color(pct)
-        sparkline = _svg_sparkline(history, bcolor)
+        sparkline = _svg_sparkline(hist, bcolor)
         rows.append(
             f'<div style="display:flex;align-items:center;gap:8px;height:22px">'
             f'<span style="font-size:11px;color:#6b7f82;width:38px;font-weight:600">{label}</span>'

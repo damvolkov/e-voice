@@ -22,6 +22,7 @@ from e_voice.models.system import (
     ServiceType,
 )
 from e_voice.operational.controller import DeviceController
+from e_voice.operational.monitor import SystemMonitor
 
 router = Router(__file__, prefix="/v1")
 
@@ -164,6 +165,39 @@ async def unload_model(request: Request, model_id: str, global_dependencies) -> 
             )
 
     return error_response(request.url.path, 404, f"Model '{model_id}' is not loaded", error_type="not_found_error")
+
+
+##### SYSTEM MONITOR #####
+
+
+@router.get("/system/monitor")
+async def get_monitor(global_dependencies) -> Response:
+    """Poll and return system metrics snapshot with sparkline history."""
+    monitor: SystemMonitor = global_dependencies.get("state").monitor
+    snap = monitor.poll()
+    return Response(
+        status_code=status_codes.HTTP_200_OK,
+        headers={"content-type": "application/json"},
+        description=orjson.dumps(
+            {
+                "cpu_pct": snap.cpu_pct,
+                "ram_used_gb": snap.ram_used_gb,
+                "ram_total_gb": snap.ram_total_gb,
+                "ram_pct": snap.ram_pct,
+                "gpu_util_pct": snap.gpu_util_pct,
+                "vram_used_mb": snap.vram_used_mb,
+                "vram_total_mb": snap.vram_total_mb,
+                "vram_pct": snap.vram_pct,
+                "gpu_available": snap.gpu_available,
+                "history": {
+                    "cpu": list(monitor.cpu_history),
+                    "ram": list(monitor.ram_history),
+                    "gpu_util": list(monitor.gpu_util_history),
+                    "vram": list(monitor.vram_history),
+                },
+            }
+        ).decode(),
+    )
 
 
 ##### DEVICE CONTROL #####
