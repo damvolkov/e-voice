@@ -72,7 +72,9 @@ class DeviceController:
 
         self._transitioning = True
         try:
+            previous = self.active_device
             resolved_compute = resolve_compute_type(target, ComputeType.DEFAULT)
+
             stt_spec = ModelSpec(
                 model_id=st.stt.model,
                 device=target.value,
@@ -88,7 +90,10 @@ class DeviceController:
                 await kokoro.load(tts_spec)
 
             st.stt.device = target
+            st.stt.compute_type = resolved_compute
             st.tts.device = target
+
+            await self._dc_unload_previous(previous, target, whisper, kokoro)
 
             await self._dc_persist_config(target)
 
@@ -100,6 +105,26 @@ class DeviceController:
             return SwitchResult(success=False, device=self.active_device, message=str(exc))
         finally:
             self._transitioning = False
+
+    async def _dc_unload_previous(
+        self,
+        previous: DeviceType,
+        target: DeviceType,
+        whisper: WhisperAdapter,
+        kokoro: KokoroAdapter,
+    ) -> None:
+        """Unload models from previous device to free resources (e.g. VRAM)."""
+        if previous == target:
+            return
+
+        prev_val = previous.value
+        for spec in [s for s in whisper.loaded_models() if s.device == prev_val]:
+            if await whisper.unload(spec):
+                logger.info("unloaded STT from previous device", step="MODEL", device=prev_val)
+
+        for spec in [s for s in kokoro.loaded_models() if s.device == previous]:
+            if await kokoro.unload(spec):
+                logger.info("unloaded TTS from previous device", step="MODEL", device=prev_val)
 
     async def _dc_persist_config(self, device: DeviceType, config_dir: Path | None = None) -> None:
         """Write updated device to config.yaml. No-op if file is read-only or missing."""

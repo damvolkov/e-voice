@@ -95,20 +95,20 @@ async def test_transcribe_with_prompt(openai_client: AsyncOpenAI, en_sample) -> 
 ##### POST /v1/audio/translations (SDK) #####
 
 
-async def test_translate_es_to_en(openai_client: AsyncOpenAI, es_sample) -> None:
+async def test_translate_es_to_en(openai_client: AsyncOpenAI, es_long_sample) -> None:
     result = await openai_client.audio.translations.create(
         model="whisper",
-        file=("audio.wav", es_sample.audio_bytes(), "audio/wav"),
+        file=("audio.wav", es_long_sample.audio_bytes(), "audio/wav"),
         response_format="json",
     )
     assert hasattr(result, "text")
     assert len(result.text.strip()) > 0
 
 
-async def test_translate_text_format(openai_client: AsyncOpenAI, es_sample) -> None:
+async def test_translate_text_format(openai_client: AsyncOpenAI, es_long_sample) -> None:
     result = await openai_client.audio.translations.create(
         model="whisper",
-        file=("audio.wav", es_sample.audio_bytes(), "audio/wav"),
+        file=("audio.wav", es_long_sample.audio_bytes(), "audio/wav"),
         response_format="text",
     )
     assert len(result.strip()) > 0

@@ -42,5 +42,10 @@ def es_sample(audioeval: AudioEval):
 
 
 @pytest.fixture(scope="session")
+def es_long_sample(audioeval: AudioEval):
+    return audioeval.samples.es_pangrama
+
+
+@pytest.fixture(scope="session")
 def en_counting_sample(audioeval: AudioEval):
     return audioeval.samples.en_counting

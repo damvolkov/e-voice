@@ -2,6 +2,7 @@
 
 import asyncio
 import functools
+import gc
 import threading
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
@@ -198,10 +199,11 @@ class WhisperAdapter(BaseModelAdapter):
         logger.info("✅ MODEL_LOADED", extra={"model": spec.model_id, "device": spec.device})
 
     async def unload(self, spec: ModelSpec) -> bool:
-        """Unload model from memory."""
+        """Unload model and release VRAM."""
         if (model := self._models.pop(spec, None)) is not None:
             del model
-            logger.info("🗑️ MODEL_UNLOADED", extra={"model": spec.model_id})
+            gc.collect()
+            logger.info("🗑️ MODEL_UNLOADED", extra={"model": spec.model_id, "device": spec.device})
             return True
         return False
 

@@ -1,6 +1,7 @@
 """Kokoro-ONNX adapter — TTS model lifecycle and speech synthesis."""
 
 import asyncio
+import gc
 import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -84,11 +85,12 @@ class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
         logger.info("✅ MODEL_LOADED", extra={"model": target.model_id, "provider": provider.value})
 
     async def unload(self, spec: TTSModelSpec | None = None) -> bool:
-        """Unload model from memory."""
+        """Unload model and release resources."""
         target = spec or TTSModelSpec(device=st.tts.device)
         if (model := self._models.pop(target, None)) is not None:
             del model
-            logger.info("🗑️ MODEL_UNLOADED", extra={"model": target.model_id})
+            gc.collect()
+            logger.info("🗑️ MODEL_UNLOADED", extra={"model": target.model_id, "device": target.device.value})
             return True
         return False
 

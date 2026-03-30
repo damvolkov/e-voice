@@ -133,9 +133,9 @@ async def test_transcription_no_file_returns_422(
 
 async def test_translation_json_format(
     stt_client: httpx.AsyncClient,
-    es_sample,
+    es_long_sample,
 ) -> None:
-    files, data = _multipart(es_sample.audio_bytes(), response_format="json")
+    files, data = _multipart(es_long_sample.audio_bytes(), response_format="json")
     response = await stt_client.post("/v1/audio/translations", files=files, data=data)
     assert response.status_code == 200
 
@@ -146,9 +146,9 @@ async def test_translation_json_format(
 
 async def test_translation_text_format(
     stt_client: httpx.AsyncClient,
-    es_sample,
+    es_long_sample,
 ) -> None:
-    files, data = _multipart(es_sample.audio_bytes(), response_format="text")
+    files, data = _multipart(es_long_sample.audio_bytes(), response_format="text")
     response = await stt_client.post("/v1/audio/translations", files=files, data=data)
     assert response.status_code == 200
     assert len(response.text.strip()) > 0

@@ -9,6 +9,8 @@ from pytest_mock import MockerFixture
 
 from e_voice.core.settings import DeviceType
 from e_voice.core.settings import settings as st
+from e_voice.models.stt import ModelSpec
+from e_voice.models.tts import TTSModelSpec
 from e_voice.operational.controller import DeviceController, DeviceState, SwitchResult
 
 ##### FIXTURES #####
@@ -20,18 +22,22 @@ def controller() -> DeviceController:
 
 
 @pytest.fixture
-def mock_whisper(mocker: MockerFixture) -> AsyncMock:
+def mock_whisper() -> AsyncMock:
     adapter = AsyncMock()
     adapter.is_loaded = AsyncMock(return_value=True)
     adapter.load = AsyncMock()
+    adapter.unload = AsyncMock(return_value=True)
+    adapter.loaded_models = lambda: []
     return adapter
 
 
 @pytest.fixture
-def mock_kokoro(mocker: MockerFixture) -> AsyncMock:
+def mock_kokoro() -> AsyncMock:
     adapter = AsyncMock()
     adapter.is_loaded = AsyncMock(return_value=True)
     adapter.load = AsyncMock()
+    adapter.unload = AsyncMock(return_value=True)
+    adapter.loaded_models = lambda: []
     return adapter
 
 
@@ -129,6 +135,62 @@ async def test_switch_loads_model_if_not_loaded(
     finally:
         st.stt.device = original_stt
         st.tts.device = original_tts
+
+
+##### SWITCH — UNLOADS PREVIOUS DEVICE #####
+
+
+async def test_switch_unloads_previous_device_models(
+    controller: DeviceController,
+    mock_whisper: AsyncMock,
+    mock_kokoro: AsyncMock,
+    mocker: MockerFixture,
+) -> None:
+    """Switching GPU→CPU must unload GPU models from both adapters."""
+    original_stt = st.stt.device
+    original_tts = st.tts.device
+    mocker.patch.object(DeviceController, "_dc_persist_config", new_callable=AsyncMock)
+
+    gpu_stt_spec = ModelSpec(model_id=st.stt.model, device="gpu", compute_type="float16")
+    gpu_tts_spec = TTSModelSpec(device=DeviceType.GPU)
+    mock_whisper.loaded_models = lambda: [gpu_stt_spec]
+    mock_kokoro.loaded_models = lambda: [gpu_tts_spec]
+
+    st.stt.device = DeviceType.GPU
+    try:
+        result = await controller.switch(DeviceType.CPU, mock_whisper, mock_kokoro)
+        assert result.success is True
+        mock_whisper.unload.assert_called_once_with(gpu_stt_spec)
+        mock_kokoro.unload.assert_called_once_with(gpu_tts_spec)
+    finally:
+        st.stt.device = original_stt
+        st.tts.device = original_tts
+
+
+async def test_switch_skips_unload_when_same_device(
+    controller: DeviceController,
+    mock_whisper: AsyncMock,
+    mock_kokoro: AsyncMock,
+) -> None:
+    """_dc_unload_previous is a no-op when previous == target."""
+    await controller._dc_unload_previous(DeviceType.GPU, DeviceType.GPU, mock_whisper, mock_kokoro)
+    mock_whisper.unload.assert_not_called()
+    mock_kokoro.unload.assert_not_called()
+
+
+async def test_unload_previous_only_targets_previous_device(
+    controller: DeviceController,
+    mock_whisper: AsyncMock,
+    mock_kokoro: AsyncMock,
+) -> None:
+    """Only models on the previous device are unloaded, not the target device."""
+    gpu_spec = ModelSpec(model_id="test", device="gpu", compute_type="float16")
+    cpu_spec = ModelSpec(model_id="test", device="cpu", compute_type="int8")
+    mock_whisper.loaded_models = lambda: [gpu_spec, cpu_spec]
+    mock_kokoro.loaded_models = lambda: []
+
+    await controller._dc_unload_previous(DeviceType.GPU, DeviceType.CPU, mock_whisper, mock_kokoro)
+    mock_whisper.unload.assert_called_once_with(gpu_spec)
 
 
 ##### SWITCH — FAILURE #####

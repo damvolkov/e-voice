@@ -99,7 +99,7 @@ async def test_transcription_sse_quality(
 
 async def test_translation_sse_yields_events(
     stt_client: httpx.AsyncClient,
-    es_sample,
+    es_long_sample,
 ) -> None:
     events: list[str] = []
 
@@ -107,7 +107,7 @@ async def test_translation_sse_yields_events(
         stt_client,
         "POST",
         "/v1/audio/translations",
-        files={"file": ("audio.wav", es_sample.audio_bytes(), "audio/wav")},
+        files={"file": ("audio.wav", es_long_sample.audio_bytes(), "audio/wav")},
         data={"stream": "true", "response_format": "json"},
     ) as event_source:
         async for event in event_source.aiter_sse():
