@@ -72,7 +72,7 @@ async def test_vad_config_to_dict_keys() -> None:
 async def test_stt_config_defaults() -> None:
     cfg = STTConfig()
     assert cfg.device == DeviceType.GPU
-    assert cfg.compute_type == ComputeType.FLOAT16
+    assert cfg.compute_type == ComputeType.DEFAULT
     assert cfg.num_workers == 1
 
 

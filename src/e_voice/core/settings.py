@@ -123,7 +123,7 @@ class STTConfig(BaseModel):
     model: str = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
     device: DeviceType = DeviceType.GPU
     device_index: int = Field(default=0, ge=0)
-    compute_type: ComputeType = ComputeType.FLOAT16
+    compute_type: ComputeType = ComputeType.DEFAULT
     cpu_threads: int = Field(default=0, ge=0)
     num_workers: int = Field(default=1, ge=1)
     default_language: str | None = None
