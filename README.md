@@ -122,7 +122,14 @@ data: [DONE]
 
 Real-time streaming STT with LocalAgreement.
 
-**Query parameters**: `?language=es&response_format=json&model=...`
+**Query parameters**: `?language=es&response_format=json&model=...&segmentation=true`
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `language` | config default | ISO 639-1 code, or `auto` |
+| `response_format` | config default | `json`, `text`, `verbose_json` |
+| `model` | config default | Whisper model ID |
+| `segmentation` | `false` | Enable VAD-based utterance segmentation |
 
 **Protocol**:
 1. Connect with optional query params
@@ -142,8 +149,27 @@ Real-time streaming STT with LocalAgreement.
 
 When `response_format=text`: returns confirmed text as plain string.
 
+**Utterance Segmentation** (`segmentation=true`):
+
+When enabled, Silero VAD runs frame-level neural speech detection (~44us/frame) on every audio chunk.
+When the speaker stops talking, a `segment_end` event is emitted with the utterance text, and the
+text resets for the next utterance — matching the behavior of Google Cloud STT and Deepgram.
+
+```json
+{"type": "transcript_update", "text": "Hola busca", "partial": "información", "is_final": false}
+{"type": "segment_end", "text": "Hola busca información", "partial": "", "is_final": true}
+{"type": "transcript_update", "text": "perico", "partial": "", "is_final": false}
+{"type": "segment_end", "text": "perico", "partial": "", "is_final": true}
+{"type": "session_end", "text": "", "partial": "", "is_final": true}
+```
+
+Without `segmentation=true`, text accumulates across the entire session (backward-compatible default).
+VAD sensitivity is tunable via `vad.min_silence_duration_ms` in `config.yaml` (default 2000ms,
+recommended 600–800ms for conversational turn detection).
+
 **Features**:
 - **Binary PCM16-LE frames** — same format as OpenAI Realtime, Deepgram, Azure Speech, AssemblyAI
+- **Frame-level VAD** — Silero neural VAD with per-frame LSTM state, configurable silence threshold
 - LocalAgreement — words are never retracted once confirmed
 - Sentence-boundary finalization + same-output detection
 - Bounded audio buffer (45s max) with context re-transcription
@@ -282,6 +308,23 @@ Launches automatically alongside the API:
 
 Disable via `front.enabled: false` in `data/config/config.yaml`.
 
+## GPU / CPU Device Switcher
+
+<p align="center">
+  <img src="assets/e-voice-front-monitor.png" alt="GPU/CPU Monitor" width="360">
+</p>
+
+The system monitor shows real-time VRAM, GPU %, CPU %, and RAM usage. Both STT and TTS models
+can run on GPU or CPU, controlled via `config.yaml` or the runtime API.
+
+When `stt.cpu_fallback: true` (default), a CPU copy of the Whisper model is loaded alongside the
+GPU model at startup. If GPU inference fails or VRAM is exhausted, the system automatically falls
+back to CPU without downtime.
+
+The device controller (`/v1/system/device`) allows runtime switching between GPU and CPU for
+hot-swapping without restarts — useful for shared GPU environments where VRAM needs to be
+temporarily freed for other workloads.
+
 ## Configuration
 
 All settings in `data/config/config.yaml` (YAML-based, typed via `pydantic-settings`):
@@ -294,10 +337,17 @@ system:
 stt:
   model: "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
   device: gpu           # gpu, cpu, or auto
+  cpu_fallback: true    # load CPU model alongside GPU for automatic fallback
 
 tts:
   device: gpu
   default_voice: af_heart
+
+vad:
+  enabled: true
+  threshold: 0.65       # speech detection sensitivity (0.0–1.0)
+  min_silence_duration_ms: 2000  # silence duration to trigger segment end
+  min_speech_duration_ms: 300    # ignore speech shorter than this
 
 front:
   enabled: true

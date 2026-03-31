@@ -20,6 +20,7 @@ from e_voice.streaming.text import (
     last_full_sentence_text,
     words_to_text,
 )
+from e_voice.streaming.vad import SpeechStateTracker
 
 ##### EVENTS #####
 
@@ -27,6 +28,7 @@ from e_voice.streaming.text import (
 class StreamingEventType(StrEnum):
     TRANSCRIPT_UPDATE = auto()
     TRANSCRIPT_FINAL = auto()
+    SEGMENT_END = auto()
     SESSION_END = auto()
 
 
@@ -107,10 +109,12 @@ class SessionState:
         "language",
         "model_id",
         "response_format",
+        "vad",
         "_ss_last_transcribe_end",
         "_ss_last_activity_ts",
         "_ss_prev_unconfirmed",
         "_ss_same_output_count",
+        "_ss_segment_start",
     )
 
     def __init__(
@@ -118,6 +122,7 @@ class SessionState:
         language: str | None = None,
         model_id: str | None = None,
         response_format: str = "text",
+        segmentation: bool = False,
     ) -> None:
         self.audio_buffer = AudioBuffer(
             max_duration_s=st.streaming.max_buffer_seconds,
@@ -128,10 +133,17 @@ class SessionState:
         self.language = language
         self.model_id = model_id or st.stt.model
         self.response_format = response_format
+        self.vad: SpeechStateTracker | None = SpeechStateTracker(st.vad, st.stt.sample_rate) if segmentation else None
         self._ss_last_transcribe_end: float = 0.0
         self._ss_last_activity_ts: float = time.monotonic()
         self._ss_prev_unconfirmed: str = ""
         self._ss_same_output_count: int = 0
+        self._ss_segment_start: int = 0
+
+    @property
+    def segment_text(self) -> str:
+        """Text of the current segment only (words since last segment boundary)."""
+        return words_to_text(self.confirmed.words[self._ss_segment_start :])
 
 
 ##### PROCESSING #####
@@ -200,11 +212,33 @@ async def process_audio_chunk(
     if not new_confirmed_text and not unconfirmed_text:
         return None
 
+    confirmed_text = session.segment_text if session.vad is not None else session.confirmed.text
+
     return StreamingEvent(
         type=event_type,
-        confirmed_text=session.confirmed.text,
+        confirmed_text=confirmed_text,
         unconfirmed_text=unconfirmed_text,
         new_confirmed=new_confirmed_text,
+    )
+
+
+def flush_segment(session: SessionState) -> StreamingEvent:
+    """Flush current segment on VAD end-of-speech. Resets segment boundary."""
+    remaining = session.agreement.flush()
+    if remaining:
+        session.confirmed.extend(remaining)
+
+    segment_text = session.segment_text
+    session._ss_segment_start = len(session.confirmed)
+    session._ss_same_output_count = 0
+    session._ss_prev_unconfirmed = ""
+
+    return StreamingEvent(
+        type=StreamingEventType.SEGMENT_END,
+        confirmed_text=segment_text,
+        unconfirmed_text="",
+        new_confirmed="",
+        is_final=True,
     )
 
 
@@ -215,9 +249,11 @@ def flush_session(session: SessionState) -> StreamingEvent:
     if remaining:
         session.confirmed.extend(remaining)
 
+    confirmed_text = session.segment_text if session.vad is not None else session.confirmed.text
+
     return StreamingEvent(
         type=StreamingEventType.SESSION_END,
-        confirmed_text=session.confirmed.text,
+        confirmed_text=confirmed_text,
         unconfirmed_text="",
         new_confirmed=flushed_text,
         is_final=True,

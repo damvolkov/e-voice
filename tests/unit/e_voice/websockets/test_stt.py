@@ -5,6 +5,7 @@ import base64
 import numpy as np
 import orjson
 
+from e_voice.models.ws import STTParams
 from e_voice.streaming.transcriber import StreamingEvent, StreamingEventType
 from e_voice.websockets.stt import format_event, handle_stt
 
@@ -38,6 +39,21 @@ async def test_format_event_text() -> None:
     assert format_event(event, "text") == "Hello world"
 
 
+async def test_format_event_segment_end() -> None:
+    event = StreamingEvent(
+        type=StreamingEventType.SEGMENT_END,
+        confirmed_text="Hola mundo",
+        unconfirmed_text="",
+        new_confirmed="",
+        is_final=True,
+    )
+    result = format_event(event, "json")
+    parsed = orjson.loads(result)
+    assert parsed["type"] == "segment_end"
+    assert parsed["text"] == "Hola mundo"
+    assert parsed["is_final"] is True
+
+
 ##### HANDLE_STT — BINARY FRAMES #####
 
 
@@ -54,7 +70,7 @@ async def test_handle_stt_binary_pcm16(mocker) -> None:
     pcm16 = np.zeros(160, dtype=np.int16).tobytes()
 
     conn = MockConnection(
-        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        params=STTParams(language="en", response_format="json"),
         state=state,
         _messages=[pcm16],
     )
@@ -82,7 +98,7 @@ async def test_handle_stt_base64_text(mocker) -> None:
     b64 = base64.b64encode(np.zeros(160, dtype=np.int16).tobytes()).decode()
 
     conn = MockConnection(
-        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        params=STTParams(language="en", response_format="json"),
         state=state,
         _messages=[b64],
     )
@@ -109,7 +125,7 @@ async def test_handle_stt_end_of_audio_flushes(mocker) -> None:
 
     state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
     conn = MockConnection(
-        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        params=STTParams(language="en", response_format="json"),
         state=state,
         _messages=["END_OF_AUDIO"],
     )
@@ -132,7 +148,7 @@ async def test_handle_stt_none_event_sends_ack(mocker) -> None:
     pcm16 = np.zeros(160, dtype=np.int16).tobytes()
 
     conn = MockConnection(
-        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        params=STTParams(language="en", response_format="json"),
         state=state,
         _messages=[pcm16],
     )
@@ -161,7 +177,7 @@ async def test_handle_stt_cleans_session_on_disconnect(mocker) -> None:
 
     state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
     conn = MockConnection(
-        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        params=STTParams(language="en"),
         state=state,
         _messages=[],
     )
@@ -181,7 +197,7 @@ async def test_handle_stt_error_sends_json(mocker) -> None:
     pcm16 = np.zeros(160, dtype=np.int16).tobytes()
 
     conn = MockConnection(
-        query_params={"language": "en", "response_format": "json", "model": "tiny"},
+        params=STTParams(language="en"),
         state=state,
         _messages=[pcm16],
     )
@@ -202,7 +218,7 @@ async def test_handle_stt_auto_language_sets_none(mocker) -> None:
     state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
 
     conn = MockConnection(
-        query_params={"language": "auto", "response_format": "json", "model": "tiny"},
+        params=STTParams(language="auto"),
         state=state,
         _messages=[np.zeros(160, dtype=np.int16).tobytes()],
     )
@@ -211,3 +227,110 @@ async def test_handle_stt_auto_language_sets_none(mocker) -> None:
 
     session = state.stt_sessions.get(conn.id)
     assert session is None  # cleaned up in finally
+
+
+##### HANDLE_STT — SEGMENTATION MODE #####
+
+
+async def test_handle_stt_segmentation_creates_vad(mocker) -> None:
+    mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=None)
+
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    conn = MockConnection(
+        params=STTParams(language="en", segmentation=True),
+        state=state,
+        _messages=[np.zeros(160, dtype=np.int16).tobytes()],
+    )
+
+    await handle_stt(conn)
+    assert len(conn.sent) >= 1
+
+
+async def test_handle_stt_segmentation_false_no_vad(mocker) -> None:
+    mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=None)
+
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    conn = MockConnection(
+        params=STTParams(language="en", segmentation=False),
+        state=state,
+        _messages=[np.zeros(160, dtype=np.int16).tobytes()],
+    )
+
+    await handle_stt(conn)
+    assert len(conn.sent) >= 1
+
+
+async def test_handle_stt_vad_trigger_sends_segment_end(mocker) -> None:
+    mocker.patch("e_voice.websockets.stt.process_audio_chunk", return_value=None)
+
+    seg_event = StreamingEvent(
+        type=StreamingEventType.SEGMENT_END,
+        confirmed_text="Hola mundo",
+        unconfirmed_text="",
+        new_confirmed="",
+        is_final=True,
+    )
+    mocker.patch("e_voice.websockets.stt.flush_segment", return_value=seg_event)
+
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    pcm16 = np.zeros(160, dtype=np.int16).tobytes()
+
+    conn = MockConnection(
+        params=STTParams(language="en", segmentation=True),
+        state=state,
+        _messages=[pcm16],
+    )
+
+    original_init = mocker.patch("e_voice.websockets.stt.SessionState")
+    mock_session = mocker.MagicMock()
+    mock_session.vad = mocker.MagicMock()
+    mock_session.vad.update.return_value = True
+    mock_session.response_format = "json"
+    mock_session.confirmed.text = "Hola mundo"
+    mock_session.agreement.unconfirmed_text = ""
+    mock_session.segment_text = "Hola mundo"
+    original_init.return_value = mock_session
+    state.stt_sessions = {}
+
+    await handle_stt(conn)
+
+    sent_types = []
+    for msg in conn.sent:
+        parsed = orjson.loads(msg)
+        sent_types.append(parsed.get("type"))
+    assert "segment_end" in sent_types
+
+
+async def test_handle_stt_end_of_audio_with_segmentation(mocker) -> None:
+    seg_event = StreamingEvent(
+        type=StreamingEventType.SEGMENT_END,
+        confirmed_text="pending",
+        unconfirmed_text="",
+        new_confirmed="",
+        is_final=True,
+    )
+    session_event = StreamingEvent(
+        type=StreamingEventType.SESSION_END,
+        confirmed_text="",
+        unconfirmed_text="",
+        new_confirmed="",
+        is_final=True,
+    )
+    mocker.patch("e_voice.websockets.stt.flush_segment", return_value=seg_event)
+    mocker.patch("e_voice.websockets.stt.flush_session", return_value=session_event)
+
+    state = MockState(stt_sessions={}, whisper=mocker.MagicMock())
+    conn = MockConnection(
+        params=STTParams(language="en", response_format="json", segmentation=True),
+        state=state,
+        _messages=["END_OF_AUDIO"],
+    )
+
+    await handle_stt(conn)
+
+    assert len(conn.sent) == 2
+    first = orjson.loads(conn.sent[0])
+    second = orjson.loads(conn.sent[1])
+    assert first["type"] == "segment_end"
+    assert first["text"] == "pending"
+    assert second["type"] == "session_end"

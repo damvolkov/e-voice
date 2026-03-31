@@ -153,6 +153,7 @@ class VADConfig(BaseModel):
 
     enabled: bool = True
     threshold: float = Field(default=0.65, ge=0.0, le=1.0)
+    neg_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     min_speech_duration_ms: int = Field(default=300, ge=0)
     max_speech_duration_s: float = Field(default=float("inf"), ge=0.0)
     min_silence_duration_ms: int = Field(default=2000, ge=0)

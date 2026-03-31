@@ -1,8 +1,8 @@
-"""Unit tests for core/websocket.py — BaseWebSocket, WebSocketHandler, Connection, WebSocketRouter."""
+"""Unit tests for core/websocket.py — BaseWebSocket, WebSocketHandler, Connection, WebSocketRouter, WSRoute."""
 
 import pytest
 
-from e_voice.core.websocket import BaseWebSocket, Connection, WebSocketHandler, WebSocketRouter
+from e_voice.core.websocket import BaseWebSocket, BaseWSParams, Connection, WebSocketHandler, WebSocketRouter, WSRoute
 
 ##### BASE WEBSOCKET #####
 
@@ -166,12 +166,41 @@ async def test_websocket_handler_wsh_register_handler_async(mocker) -> None:
     assert fi.is_async is True
 
 
+##### BASE WS PARAMS #####
+
+
+async def test_base_ws_params_empty() -> None:
+    params = BaseWSParams()
+    assert params.model_fields == {}
+
+
+async def test_base_ws_params_frozen() -> None:
+    assert BaseWSParams.model_config.get("frozen") is True
+
+
+async def test_base_ws_params_ignores_extra() -> None:
+    params = BaseWSParams.model_validate({"unknown": "value"})
+    assert not hasattr(params, "unknown")
+
+
+##### WS ROUTE #####
+
+
+async def test_ws_route_frozen() -> None:
+    async def handler(conn):
+        pass
+
+    route = WSRoute(handler=handler, params_cls=BaseWSParams)
+    assert route.handler is handler
+    assert route.params_cls is BaseWSParams
+
+
 ##### CONNECTION #####
 
 
 async def test_connection_send_delegates(mocker) -> None:
     mock_ws = mocker.AsyncMock()
-    conn = Connection(id="abc", path="/v1/test", query_params={}, state=None, ws=mock_ws)
+    conn = Connection(id="abc", path="/v1/test", params=BaseWSParams(), state=None, ws=mock_ws)
 
     await conn.send("hello")
     mock_ws.send.assert_awaited_once_with("hello")
@@ -179,7 +208,7 @@ async def test_connection_send_delegates(mocker) -> None:
 
 async def test_connection_send_bytes(mocker) -> None:
     mock_ws = mocker.AsyncMock()
-    conn = Connection(id="abc", path="/v1/test", query_params={}, state=None, ws=mock_ws)
+    conn = Connection(id="abc", path="/v1/test", params=BaseWSParams(), state=None, ws=mock_ws)
 
     await conn.send(b"\x00\x01")
     mock_ws.send.assert_awaited_once_with(b"\x00\x01")
@@ -187,7 +216,7 @@ async def test_connection_send_bytes(mocker) -> None:
 
 async def test_connection_close(mocker) -> None:
     mock_ws = mocker.AsyncMock()
-    conn = Connection(id="abc", path="/v1/test", query_params={}, state=None, ws=mock_ws)
+    conn = Connection(id="abc", path="/v1/test", params=BaseWSParams(), state=None, ws=mock_ws)
 
     await conn.close(4000, "test")
     mock_ws.close.assert_awaited_once_with(4000, "test")
@@ -202,10 +231,20 @@ async def test_connection_aiter_yields_messages() -> None:
             for m in self._msgs:
                 yield m
 
-    conn = Connection(id="abc", path="/v1/test", query_params={}, state=None, ws=FakeWS(["text", b"binary"]))
+    conn = Connection(id="abc", path="/v1/test", params=BaseWSParams(), state=None, ws=FakeWS(["text", b"binary"]))
 
     collected = [msg async for msg in conn]
     assert collected == ["text", b"binary"]
+
+
+async def test_connection_params_typed() -> None:
+    class CustomParams(BaseWSParams):
+        language: str = "es"
+
+    params = CustomParams()
+    mock_ws = type("FakeWS", (), {"send": lambda *a: None, "close": lambda *a: None})()
+    conn = Connection(id="abc", path="/test", params=params, state=None, ws=mock_ws)
+    assert conn.params.language == "es"
 
 
 ##### WEBSOCKET ROUTER #####
@@ -219,7 +258,8 @@ async def test_router_registers_handler() -> None:
         pass
 
     assert "/v1/test" in router.routes
-    assert router.routes["/v1/test"] is handler
+    assert router.routes["/v1/test"].handler is handler
+    assert router.routes["/v1/test"].params_cls is BaseWSParams
 
 
 async def test_router_registers_multiple_paths() -> None:
@@ -230,7 +270,20 @@ async def test_router_registers_multiple_paths() -> None:
         pass
 
     assert len(router.routes) == 3
-    assert all(router.routes[p] is handler for p in ("/v1/a", "/v1/b", "/v1/c"))
+    assert all(router.routes[p].handler is handler for p in ("/v1/a", "/v1/b", "/v1/c"))
+
+
+async def test_router_registers_with_params_cls() -> None:
+    class CustomParams(BaseWSParams):
+        lang: str = "en"
+
+    router = WebSocketRouter()
+
+    @router("/v1/test", params=CustomParams)
+    async def handler(conn):
+        pass
+
+    assert router.routes["/v1/test"].params_cls is CustomParams
 
 
 async def test_router_routes_property() -> None:
@@ -277,7 +330,11 @@ async def test_server_dispatch_calls_handler(mocker) -> None:
 
     handler = mocker.AsyncMock()
     server = WebSocketServer(port=9999)
-    server._routes = {"/v1/test": handler}
+
+    class TestParams(BaseWSParams):
+        lang: str = "en"
+
+    server._routes = {"/v1/test": WSRoute(handler=handler, params_cls=TestParams)}
     server._state = mocker.MagicMock()
 
     mock_ws = mocker.AsyncMock()
@@ -289,7 +346,27 @@ async def test_server_dispatch_calls_handler(mocker) -> None:
     handler.assert_awaited_once()
     conn = handler.call_args[0][0]
     assert conn.path == "/v1/test"
-    assert conn.query_params == {"lang": "es"}
+    assert conn.params.lang == "es"
+
+
+async def test_server_dispatch_validates_params(mocker) -> None:
+    from uuid import UUID
+
+    from e_voice.core.websocket import WebSocketServer
+
+    handler = mocker.AsyncMock()
+    server = WebSocketServer(port=9999)
+    server._routes = {"/v1/test": WSRoute(handler=handler, params_cls=BaseWSParams)}
+    server._state = mocker.MagicMock()
+
+    mock_ws = mocker.AsyncMock()
+    mock_ws.request.path = "/v1/test"
+    mock_ws.id = UUID("12345678123456781234567812345678")
+
+    await server._dispatch(mock_ws)
+
+    conn = handler.call_args[0][0]
+    assert isinstance(conn.params, BaseWSParams)
 
 
 async def test_server_dispatch_unknown_path_closes(mocker) -> None:
@@ -320,7 +397,7 @@ async def test_server_dispatch_handler_exception_logged(mocker) -> None:
         raise RuntimeError("handler exploded")
 
     server = WebSocketServer(port=9999)
-    server._routes = {"/v1/boom": failing_handler}
+    server._routes = {"/v1/boom": WSRoute(handler=failing_handler, params_cls=BaseWSParams)}
     server._state = mocker.MagicMock()
 
     mock_ws = mocker.AsyncMock()

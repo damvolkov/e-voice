@@ -4,10 +4,12 @@ import asyncio
 import inspect
 import threading
 from collections.abc import AsyncGenerator, Callable
-from typing import Any, Literal, Self
+from dataclasses import dataclass
+from typing import Any, Literal
 from urllib.parse import parse_qsl, urlparse
 
 import websockets
+from pydantic import BaseModel, ConfigDict, ValidationError
 from robyn import Robyn, WebSocket
 from robyn.robyn import FunctionInfo
 from websockets.exceptions import ConnectionClosed
@@ -52,7 +54,7 @@ class WebSocketHandler:
         self._prefix = prefix
         self._registered: list[WebSocket] = []
 
-    def register(self, base_ws: BaseWebSocket) -> Self:
+    def register(self, base_ws: BaseWebSocket) -> "WebSocketHandler":
         """Register a BaseWebSocket with its handlers (dependencies injected later)."""
         if "message" not in base_ws.handlers:
             raise ValueError(f"WebSocket {base_ws.endpoint} must have a 'message' handler")
@@ -95,15 +97,29 @@ class WebSocketHandler:
 ##### STANDALONE BINARY-FRAME WEBSOCKETS #####
 
 
-class Connection:
-    """Binary-aware WebSocket connection — native str and bytes frames."""
+class BaseWSParams(BaseModel):
+    """Base for all WebSocket query parameter models."""
 
-    __slots__ = ("id", "path", "query_params", "state", "_ws")
+    model_config = ConfigDict(frozen=True)
 
-    def __init__(self, *, id: str, path: str, query_params: dict[str, str], state: Any, ws: Any) -> None:
+
+@dataclass(frozen=True, slots=True)
+class WSRoute:
+    """Route binding — associates a handler with its query parameter model."""
+
+    handler: Callable
+    params_cls: type[BaseWSParams]
+
+
+class Connection[P: BaseWSParams]:
+    """Binary-aware WebSocket connection with typed query parameters."""
+
+    __slots__ = ("id", "path", "params", "state", "_ws")
+
+    def __init__(self, *, id: str, path: str, params: P, state: Any, ws: Any) -> None:
         self.id = id
         self.path = path
-        self.query_params: dict[str, str] = query_params
+        self.params: P = params
         self.state = state
         self._ws = ws
 
@@ -129,18 +145,19 @@ class WebSocketRouter:
     __slots__ = ("_routes",)
 
     def __init__(self) -> None:
-        self._routes: dict[str, Callable] = {}
+        self._routes: dict[str, WSRoute] = {}
 
     @property
-    def routes(self) -> dict[str, Callable]:
+    def routes(self) -> dict[str, WSRoute]:
         return self._routes
 
-    def __call__(self, *paths: str) -> Callable:
-        """Register handler for one or more paths: @router("/path1", "/path2")."""
+    def __call__(self, *paths: str, params: type[BaseWSParams] = BaseWSParams) -> Callable:
+        """Register handler for one or more paths: @router("/path1", "/path2", params=STTParams)."""
 
         def decorator(handler: Callable) -> Callable:
+            route = WSRoute(handler=handler, params_cls=params)
             for p in paths:
-                self._routes[p] = handler
+                self._routes[p] = route
             return handler
 
         return decorator
@@ -153,7 +170,7 @@ class WebSocketServer:
 
     def __init__(self, port: int) -> None:
         self._port = port
-        self._routes: dict[str, Callable] = {}
+        self._routes: dict[str, WSRoute] = {}
         self._state: Any = None
 
     @property
@@ -178,25 +195,32 @@ class WebSocketServer:
             await asyncio.Future()
 
     async def _dispatch(self, ws) -> None:
-        """Route incoming connection to the matching handler."""
+        """Route incoming connection, validate params, invoke handler."""
         parsed = urlparse(ws.request.path)
         path = parsed.path
 
-        if (handler := self._routes.get(path)) is None:
+        if (route := self._routes.get(path)) is None:
             await ws.close(4004, f"No handler for {path}")
+            return
+
+        raw_params = dict(parse_qsl(parsed.query))
+        try:
+            params = route.params_cls.model_validate(raw_params)
+        except ValidationError as exc:
+            await ws.close(4400, str(exc))
             return
 
         conn = Connection(
             id=ws.id.hex,
             path=path,
-            query_params=dict(parse_qsl(parsed.query)),
+            params=params,
             state=self._state,
             ws=ws,
         )
 
         logger.info("ws connected", step="WS", path=path, client=conn.id)
         try:
-            await handler(conn)
+            await route.handler(conn)
         except Exception as exc:
             logger.error("ws handler error", step="WS", path=path, error=str(exc))
         finally:

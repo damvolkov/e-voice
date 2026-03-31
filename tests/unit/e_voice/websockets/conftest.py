@@ -5,6 +5,8 @@ from typing import Any
 
 import pytest
 
+from e_voice.core.websocket import BaseWSParams
+
 
 @dataclass
 class MockConnection:
@@ -12,7 +14,7 @@ class MockConnection:
 
     id: str = "ws-001"
     path: str = "/v1/audio/transcriptions"
-    query_params: dict[str, str] = field(default_factory=dict)
+    params: Any = field(default_factory=BaseWSParams)
     state: Any = None
     _messages: list[str | bytes] = field(default_factory=list)
     sent: list[str | bytes] = field(default_factory=list)
@@ -50,13 +52,13 @@ def make_connection(mock_state: MockState):
         *,
         id: str = "ws-001",
         path: str = "/v1/audio/transcriptions",
-        query_params: dict[str, str] | None = None,
+        params: Any = None,
         messages: list[str | bytes] | None = None,
     ) -> MockConnection:
         return MockConnection(
             id=id,
             path=path,
-            query_params=query_params or {},
+            params=params or BaseWSParams(),
             state=mock_state,
             _messages=messages or [],
         )

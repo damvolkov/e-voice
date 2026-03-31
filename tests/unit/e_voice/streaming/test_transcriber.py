@@ -11,6 +11,7 @@ from e_voice.streaming.transcriber import (
     _check_same_output,
     _extract_words,
     _needs_audio_after,
+    flush_segment,
     flush_session,
     process_audio_chunk,
 )
@@ -176,6 +177,54 @@ async def test_flush_session_empty() -> None:
     assert event.new_confirmed == ""
 
 
+##### FLUSH_SEGMENT #####
+
+
+async def test_flush_segment_returns_segment_text() -> None:
+    session = SessionState(language="es", segmentation=True)
+    session.confirmed.extend([_w("Hola", 0.0, 0.5), _w("mundo.", 0.5, 1.0)])
+    session.agreement._la_unconfirmed = [_w("qué")]
+
+    event = flush_segment(session)
+
+    assert event.type == StreamingEventType.SEGMENT_END
+    assert event.is_final is True
+    assert "Hola" in event.confirmed_text
+    assert "mundo." in event.confirmed_text
+    assert "qué" in event.confirmed_text
+
+
+async def test_flush_segment_resets_boundary() -> None:
+    session = SessionState(language="es", segmentation=True)
+    session.confirmed.extend([_w("Hola"), _w("mundo.")])
+
+    flush_segment(session)
+
+    assert session._ss_segment_start == 2
+    assert session.segment_text == ""
+    assert session._ss_same_output_count == 0
+    assert session._ss_prev_unconfirmed == ""
+
+
+async def test_flush_segment_second_segment_only_new_words() -> None:
+    session = SessionState(language="es", segmentation=True)
+    session.confirmed.extend([_w("Hola"), _w("mundo.")])
+    flush_segment(session)
+
+    session.confirmed.extend([_w("Adiós")])
+    event = flush_segment(session)
+
+    assert event.confirmed_text == "Adiós"
+    assert session._ss_segment_start == 3
+
+
+async def test_flush_segment_empty_segment() -> None:
+    session = SessionState(language="es", segmentation=True)
+    event = flush_segment(session)
+    assert event.confirmed_text == ""
+    assert event.is_final is True
+
+
 ##### SESSION_STATE #####
 
 
@@ -186,6 +235,36 @@ async def test_session_state_defaults() -> None:
     assert session.response_format == "json"
     assert session.audio_buffer.duration == 0.0
     assert len(session.confirmed) == 0
+    assert session.vad is None
+    assert session._ss_segment_start == 0
+
+
+async def test_session_state_segmentation_creates_vad() -> None:
+    session = SessionState(language="en", segmentation=True)
+    assert session.vad is not None
+
+
+async def test_session_state_no_segmentation_no_vad() -> None:
+    session = SessionState(language="en", segmentation=False)
+    assert session.vad is None
+
+
+async def test_session_state_segment_text_empty() -> None:
+    session = SessionState(language="es")
+    assert session.segment_text == ""
+
+
+async def test_session_state_segment_text_after_words() -> None:
+    session = SessionState(language="es")
+    session.confirmed.extend([_w("Hola"), _w("mundo")])
+    assert session.segment_text == "Hola mundo"
+
+
+async def test_session_state_segment_text_after_boundary() -> None:
+    session = SessionState(language="es")
+    session.confirmed.extend([_w("Hola"), _w("mundo"), _w("qué")])
+    session._ss_segment_start = 2
+    assert session.segment_text == "qué"
 
 
 ##### _EXTRACT_WORDS #####
@@ -271,3 +350,40 @@ async def test_process_audio_chunk_silence_returns_none(
     result = await process_audio_chunk(session, mock_whisper, audio)
 
     assert result is None
+
+
+##### PROCESS_AUDIO_CHUNK — SEGMENTATION MODE #####
+
+
+async def test_process_audio_chunk_segmentation_returns_segment_text(
+    mock_segments_with_words,
+    mock_info,
+) -> None:
+    session = SessionState(language="es", segmentation=True)
+    mock_whisper = AsyncMock()
+    mock_whisper.transcribe.return_value = (mock_segments_with_words, mock_info)
+
+    audio = np.zeros(16000, dtype=np.float32)
+    await process_audio_chunk(session, mock_whisper, audio)
+    result = await process_audio_chunk(session, mock_whisper, audio)
+
+    if result is not None:
+        assert result.confirmed_text == session.segment_text
+
+
+##### FLUSH_SESSION — SEGMENTATION MODE #####
+
+
+async def test_flush_session_segmentation_returns_segment_text() -> None:
+    session = SessionState(language="es", segmentation=True)
+    session.confirmed.extend([_w("Hola"), _w("mundo.")])
+    flush_segment(session)
+    session.confirmed.extend([_w("Adiós")])
+    session.agreement._la_unconfirmed = [_w("amigo")]
+
+    event = flush_session(session)
+
+    assert event.type == StreamingEventType.SESSION_END
+    assert "Adiós" in event.confirmed_text
+    assert "amigo" in event.confirmed_text
+    assert "Hola" not in event.confirmed_text
