@@ -3,8 +3,9 @@
 import numpy as np
 import pytest
 
-from e_voice.adapters.kokoro import KokoroAdapter, _resolve_provider
+from e_voice.adapters.tts.kokoro import KokoroAdapter, _resolve_provider
 from e_voice.core.settings import DeviceType
+from e_voice.core.settings import settings as st
 from e_voice.models.tts import OnnxProvider, SynthesisParams, TTSModelSpec, resolve_voice_lang
 
 ##### VOICE LANG RESOLUTION — resolve_voice_lang #####
@@ -96,7 +97,7 @@ async def test_tts_model_spec_hashable() -> None:
 
 async def test_adapter_init() -> None:
     adapter = KokoroAdapter()
-    assert adapter.loaded == []
+    assert adapter.loaded_models() == []
 
 
 async def test_adapter_is_loaded_false() -> None:
@@ -112,7 +113,7 @@ async def test_adapter_unload_not_loaded() -> None:
 async def test_adapter_resolve_raises_not_loaded() -> None:
     adapter = KokoroAdapter()
     with pytest.raises(RuntimeError, match="not loaded"):
-        adapter._resolve()
+        adapter._ka_resolve()
 
 
 ##### LIFECYCLE WITH MOCKS #####
@@ -123,7 +124,7 @@ async def test_load_stores_model(mocker) -> None:
     spec = TTSModelSpec(device=DeviceType.CPU)
     adapter._models[spec] = mocker.MagicMock()
     assert await adapter.is_loaded(spec)
-    assert spec in adapter.loaded
+    assert spec in adapter.loaded_models()
 
 
 async def test_load_idempotent(mocker) -> None:
@@ -150,10 +151,10 @@ async def test_synthesize_calls_create(mocker) -> None:
     adapter = KokoroAdapter()
     mock_kokoro = mocker.MagicMock()
     mock_kokoro.create.return_value = (np.zeros(24_000, dtype=np.float32), 24_000)
-    spec = TTSModelSpec(device=DeviceType.CPU)
+    spec = TTSModelSpec(device=st.tts.device)
     adapter._models[spec] = mock_kokoro
 
-    samples, sr = await adapter.synthesize("hello", spec=spec)
+    samples, sr = await adapter.synthesize("hello")
     assert sr == 24_000
     assert len(samples) == 24_000
     mock_kokoro.create.assert_called_once()
@@ -175,11 +176,11 @@ async def test_synthesize_stream_yields_chunks(mocker) -> None:
             yield c
 
     mock_kokoro.create_stream = fake_stream
-    spec = TTSModelSpec(device=DeviceType.CPU)
+    spec = TTSModelSpec(device=st.tts.device)
     adapter._models[spec] = mock_kokoro
 
     collected = []
-    async for samples, sr in adapter.synthesize_stream("hello", spec=spec):
+    async for samples, sr in adapter.synthesize_stream("hello"):
         collected.append((samples, sr))
 
     assert len(collected) == 2
@@ -205,11 +206,11 @@ async def test_voices_empty_before_load() -> None:
 
 async def test_load_downloads_when_files_missing(tmp_path, mocker) -> None:
     mocker.patch("e_voice.core.settings.Settings.MODELS_PATH", tmp_path, create=True)
-    mock_kokoro_cls = mocker.patch("e_voice.adapters.kokoro.Kokoro")
+    mock_kokoro_cls = mocker.patch("e_voice.adapters.tts.kokoro.Kokoro")
     mock_instance = mocker.MagicMock()
     mock_instance.get_voices.return_value = ["af_heart"]
     mock_kokoro_cls.return_value = mock_instance
-    mock_download = mocker.patch.object(KokoroAdapter, "_download", new_callable=mocker.AsyncMock)
+    mock_download = mocker.patch.object(KokoroAdapter, "_ka_download_files", new_callable=mocker.AsyncMock)
 
     adapter = KokoroAdapter()
     await adapter.load(TTSModelSpec(device=DeviceType.CPU))
@@ -249,9 +250,9 @@ async def test_download_fetches_files(tmp_path, mocker) -> None:
         async def __aexit__(self, *a):
             pass
 
-    mocker.patch("e_voice.adapters.kokoro.httpx.AsyncClient", return_value=FakeClient())
+    mocker.patch("e_voice.adapters.tts.kokoro.httpx.AsyncClient", return_value=FakeClient())
 
-    await KokoroAdapter._download(model_path, voices_path)
+    await KokoroAdapter._ka_download_files(model_path, voices_path)
 
     assert model_path.exists()
     assert voices_path.exists()
@@ -262,10 +263,10 @@ async def test_download_fetches_files(tmp_path, mocker) -> None:
 
 async def test_download_returns_model_dir(tmp_path, mocker) -> None:
     mocker.patch("e_voice.core.settings.Settings.MODELS_PATH", tmp_path, create=True)
-    mock_download = mocker.patch.object(KokoroAdapter, "_download", new_callable=mocker.AsyncMock)
+    mock_download = mocker.patch.object(KokoroAdapter, "_ka_download_files", new_callable=mocker.AsyncMock)
 
     adapter = KokoroAdapter()
     result = await adapter.download()
 
     mock_download.assert_awaited_once()
-    assert result == tmp_path / "tts"
+    assert result == tmp_path / "tts" / st.tts.backend

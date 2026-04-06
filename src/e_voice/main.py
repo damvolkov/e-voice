@@ -1,4 +1,4 @@
-"""e-voice — Speech API powered by Robyn, faster-whisper, and Kokoro."""
+"""e-voice — Speech API powered by Robyn with pluggable STT/TTS backends."""
 
 from robyn import Robyn
 
@@ -10,10 +10,9 @@ from e_voice.core.lifespan import create_lifespan
 from e_voice.core.logger import logger
 from e_voice.core.settings import settings as st
 from e_voice.core.websocket import WebSocketServer
-from e_voice.events.kokoro_model import KokoroModelEvent
+from e_voice.events.adapters import STTAdapterEvent, TTSAdapterEvent
 from e_voice.events.monitor import MonitorEvent
 from e_voice.events.process_pool import ProcessPoolEvent
-from e_voice.events.whisper_model import WhisperModelEvent
 from e_voice.front import launch_background as launch_gradio
 from e_voice.middlewares.base import MiddlewareHandler
 from e_voice.middlewares.files import FileUploadOpenAPIMiddleware
@@ -26,8 +25,8 @@ app = Robyn(__file__)
 
 lifespan = create_lifespan(app)
 lifespan.register(ProcessPoolEvent)
-lifespan.register(WhisperModelEvent)
-lifespan.register(KokoroModelEvent)
+lifespan.register(STTAdapterEvent)
+lifespan.register(TTSAdapterEvent)
 lifespan.register(MonitorEvent)
 
 ws_server = WebSocketServer(port=st.ws.port)

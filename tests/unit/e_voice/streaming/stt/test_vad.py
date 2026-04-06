@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from e_voice.core.settings import VADConfig
-from e_voice.streaming.vad import _CONTEXT_SIZE, _FRAME_SIZE, SpeechState, SpeechStateTracker
+from e_voice.streaming.stt.vad import _CONTEXT_SIZE, _FRAME_SIZE, SpeechState, SpeechStateTracker
 
 
 def _mock_session_run(prob: float):

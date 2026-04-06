@@ -1,12 +1,18 @@
-"""Pydantic models and value objects for Text-to-Speech API."""
+"""TTS domain types — backend-agnostic value objects for text-to-speech."""
 
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import Literal, Self
 
+import numpy as np
+from numpy.typing import NDArray
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from e_voice.core.settings import DeviceType
+
+##### DOMAIN TYPES #####
+
+type AudioChunk = tuple[NDArray[np.float32], int]
 
 ##### ADAPTER ENUMS #####
 

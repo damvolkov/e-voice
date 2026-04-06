@@ -1,36 +1,143 @@
-"""Base adapter for ML model services."""
+"""Base adapter contracts — STTBackend and TTSBackend ABCs.
+
+All consumers (API, WebSocket, controller, streaming) depend ONLY on these ABCs.
+Library-specific types (faster_whisper.Segment, kokoro_onnx.Kokoro) NEVER leak
+beyond the adapter boundary — adapters convert to domain types internally.
+"""
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
+import numpy as np
+from numpy.typing import NDArray
 
-class BaseModelAdapter[S](ABC):
-    """Base for adapters that manage local ML model lifecycle.
+from e_voice.core.settings import DeviceType
+from e_voice.models.error import BackendCapabilityError
+from e_voice.models.stt import InferenceParams, ModelSpec, Span, Transcript
+from e_voice.models.tts import AudioChunk, SynthesisParams, TTSModelSpec
 
-    S: spec type for model identity (e.g., ModelSpec for Whisper, str for Kokoro).
+##### STT BACKEND #####
+
+
+class STTBackend(ABC):
+    """Contract for any Speech-to-Text backend.
+
+    Abstract methods MUST be implemented. Concrete defaults raise BackendCapabilityError
+    for optional capabilities — override to enable.
     """
 
-    @abstractmethod
-    async def load(self, spec: S) -> None:
-        """Load a model into memory."""
-        ...
+    # ── Lifecycle (abstract — MUST implement) ──
 
     @abstractmethod
-    async def unload(self, spec: S) -> bool:
-        """Unload a model from memory."""
-        ...
+    async def load(self, spec: ModelSpec | None = None) -> None: ...
 
     @abstractmethod
-    async def is_loaded(self, spec: S) -> bool:
-        """Check if a model is loaded."""
-        ...
+    async def unload(self, spec: ModelSpec | None = None) -> bool: ...
 
     @abstractmethod
-    def loaded_models(self) -> list[S]:
-        """Return specs of currently loaded models."""
-        ...
+    async def is_loaded(self, spec: ModelSpec | None = None) -> bool: ...
 
     @abstractmethod
+    def loaded_models(self) -> list[ModelSpec]: ...
+
+    # ── Inference (abstract — MUST implement) ──
+
+    @abstractmethod
+    async def transcribe(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        params: InferenceParams | None = None,
+    ) -> Transcript: ...
+
+    @abstractmethod
+    async def transcribe_stream(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        params: InferenceParams | None = None,
+    ) -> AsyncGenerator[Span, None]: ...
+
+    # ── Capabilities (concrete default → BackendCapabilityError) ──
+
+    @property
+    def supported_devices(self) -> frozenset[DeviceType]:
+        """Devices this backend supports. Empty = no device concept (cloud API)."""
+        return frozenset()
+
     async def download(self, model_id: str) -> Path:
-        """Download model files to disk. Returns the model directory."""
-        ...
+        raise BackendCapabilityError(f"{type(self).__name__} does not support local download")
+
+    async def translate(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        params: InferenceParams | None = None,
+    ) -> Transcript:
+        raise BackendCapabilityError(f"{type(self).__name__} does not support translation")
+
+    async def translate_stream(
+        self,
+        audio: NDArray[np.float32],
+        *,
+        params: InferenceParams | None = None,
+    ) -> AsyncGenerator[Span, None]:
+        raise BackendCapabilityError(f"{type(self).__name__} does not support streaming translation")
+        yield  # unreachable — makes this a valid async generator  # noqa: RUF027
+
+
+##### TTS BACKEND #####
+
+
+class TTSBackend(ABC):
+    """Contract for any Text-to-Speech backend.
+
+    Abstract methods MUST be implemented. Concrete defaults raise BackendCapabilityError
+    for optional capabilities — override to enable.
+    """
+
+    # ── Lifecycle (abstract — MUST implement) ──
+
+    @abstractmethod
+    async def load(self, spec: TTSModelSpec | None = None) -> None: ...
+
+    @abstractmethod
+    async def unload(self, spec: TTSModelSpec | None = None) -> bool: ...
+
+    @abstractmethod
+    async def is_loaded(self, spec: TTSModelSpec | None = None) -> bool: ...
+
+    @abstractmethod
+    def loaded_models(self) -> list[TTSModelSpec]: ...
+
+    # ── Inference (abstract — MUST implement) ──
+
+    @abstractmethod
+    async def synthesize(
+        self,
+        text: str,
+        *,
+        params: SynthesisParams | None = None,
+    ) -> AudioChunk: ...
+
+    @abstractmethod
+    async def synthesize_stream(
+        self,
+        text: str,
+        *,
+        params: SynthesisParams | None = None,
+    ) -> AsyncGenerator[AudioChunk, None]: ...
+
+    @property
+    @abstractmethod
+    def voices(self) -> list[str]: ...
+
+    # ── Capabilities (concrete default → BackendCapabilityError) ──
+
+    @property
+    def supported_devices(self) -> frozenset[DeviceType]:
+        return frozenset()
+
+    async def download(self, model_id: str) -> Path:
+        raise BackendCapabilityError(f"{type(self).__name__} does not support local download")

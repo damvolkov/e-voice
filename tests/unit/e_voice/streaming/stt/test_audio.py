@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from e_voice.core.settings import settings as st
-from e_voice.streaming.audio import AudioBuffer
+from e_voice.streaming.stt.audio import AudioBuffer
 
 SAMPLE_RATE = st.stt.sample_rate
 

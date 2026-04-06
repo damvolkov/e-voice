@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock
 
 import numpy as np
 
-from e_voice.streaming.text import StreamingWord, WordBuffer
-from e_voice.streaming.transcriber import (
+from e_voice.streaming.stt.text import StreamingWord, WordBuffer
+from e_voice.streaming.stt.transcriber import (
     LocalAgreement,
     SessionState,
     StreamingEventType,
@@ -289,7 +289,7 @@ async def test_extract_words_filters_silence(mock_segments_silence) -> None:
 
 
 async def test_extract_words_empty_segments() -> None:
-    assert _extract_words([], audio_offset=0.0, no_speech_threshold=0.45) == []
+    assert _extract_words((), audio_offset=0.0, no_speech_threshold=0.45) == []
 
 
 ##### PROCESS_AUDIO_CHUNK #####
@@ -297,57 +297,48 @@ async def test_extract_words_empty_segments() -> None:
 
 async def test_process_audio_chunk_accumulates_before_threshold() -> None:
     session = SessionState(language="es")
-    mock_whisper = AsyncMock()
+    mock_stt = AsyncMock()
 
     short_audio = np.zeros(8000, dtype=np.float32)
-    result = await process_audio_chunk(session, mock_whisper, short_audio)
+    result = await process_audio_chunk(session, mock_stt, short_audio)
 
     assert result is None
-    mock_whisper.transcribe.assert_not_called()
+    mock_stt.transcribe.assert_not_called()
 
 
-async def test_process_audio_chunk_transcribes_when_ready(
-    mock_segments_with_words,
-    mock_info,
-) -> None:
+async def test_process_audio_chunk_transcribes_when_ready(mock_transcript) -> None:
     session = SessionState(language="es")
-    mock_whisper = AsyncMock()
-    mock_whisper.transcribe.return_value = (mock_segments_with_words, mock_info)
+    mock_stt = AsyncMock()
+    mock_stt.transcribe.return_value = mock_transcript
 
     audio = np.zeros(16000, dtype=np.float32)
-    result = await process_audio_chunk(session, mock_whisper, audio)
+    result = await process_audio_chunk(session, mock_stt, audio)
 
-    mock_whisper.transcribe.assert_called_once()
+    mock_stt.transcribe.assert_called_once()
     assert result is None or result.unconfirmed_text
 
 
-async def test_process_audio_chunk_confirms_on_second_call(
-    mock_segments_with_words,
-    mock_info,
-) -> None:
+async def test_process_audio_chunk_confirms_on_second_call(mock_transcript) -> None:
     session = SessionState(language="es")
-    mock_whisper = AsyncMock()
-    mock_whisper.transcribe.return_value = (mock_segments_with_words, mock_info)
+    mock_stt = AsyncMock()
+    mock_stt.transcribe.return_value = mock_transcript
 
     audio = np.zeros(16000, dtype=np.float32)
 
-    await process_audio_chunk(session, mock_whisper, audio)
-    result = await process_audio_chunk(session, mock_whisper, audio)
+    await process_audio_chunk(session, mock_stt, audio)
+    result = await process_audio_chunk(session, mock_stt, audio)
 
     if result is not None:
         assert "Hola" in result.confirmed_text or "Hola" in result.new_confirmed
 
 
-async def test_process_audio_chunk_silence_returns_none(
-    mock_segments_silence,
-    mock_info,
-) -> None:
+async def test_process_audio_chunk_silence_returns_none(mock_transcript_silence) -> None:
     session = SessionState(language="es")
-    mock_whisper = AsyncMock()
-    mock_whisper.transcribe.return_value = (mock_segments_silence, mock_info)
+    mock_stt = AsyncMock()
+    mock_stt.transcribe.return_value = mock_transcript_silence
 
     audio = np.zeros(16000, dtype=np.float32)
-    result = await process_audio_chunk(session, mock_whisper, audio)
+    result = await process_audio_chunk(session, mock_stt, audio)
 
     assert result is None
 
@@ -355,17 +346,14 @@ async def test_process_audio_chunk_silence_returns_none(
 ##### PROCESS_AUDIO_CHUNK — SEGMENTATION MODE #####
 
 
-async def test_process_audio_chunk_segmentation_returns_segment_text(
-    mock_segments_with_words,
-    mock_info,
-) -> None:
+async def test_process_audio_chunk_segmentation_returns_segment_text(mock_transcript) -> None:
     session = SessionState(language="es", segmentation=True)
-    mock_whisper = AsyncMock()
-    mock_whisper.transcribe.return_value = (mock_segments_with_words, mock_info)
+    mock_stt = AsyncMock()
+    mock_stt.transcribe.return_value = mock_transcript
 
     audio = np.zeros(16000, dtype=np.float32)
-    await process_audio_chunk(session, mock_whisper, audio)
-    result = await process_audio_chunk(session, mock_whisper, audio)
+    await process_audio_chunk(session, mock_stt, audio)
+    result = await process_audio_chunk(session, mock_stt, audio)
 
     if result is not None:
         assert result.confirmed_text == session.segment_text
