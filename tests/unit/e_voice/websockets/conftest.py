@@ -35,8 +35,8 @@ class MockState:
     """Mock lifespan state."""
 
     stt_sessions: dict = field(default_factory=dict)
-    whisper: object = None
-    kokoro: object = None
+    stt: object = None
+    tts: object = None
 
 
 @pytest.fixture()

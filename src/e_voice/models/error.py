@@ -1,7 +1,18 @@
-"""Error response models — OpenAI-compatible and simple formats."""
+"""Error types and response models — OpenAI-compatible and simple formats."""
 
 from pydantic import BaseModel
 from robyn import Response
+
+##### EXCEPTIONS #####
+
+
+class AppError(Exception):
+    """Base for all e-voice exceptions."""
+
+
+class BackendCapabilityError(AppError):
+    """Raised when a backend does not support the requested operation."""
+
 
 ##### OPENAI COMPATIBLE #####
 

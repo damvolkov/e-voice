@@ -3,7 +3,7 @@
 import orjson
 from pydantic import ValidationError
 
-from e_voice.adapters.kokoro import KokoroAdapter
+from e_voice.adapters.base import TTSBackend
 from e_voice.core.audio import Audio
 from e_voice.core.logger import logger
 from e_voice.core.websocket import Connection, WebSocketRouter
@@ -27,7 +27,7 @@ async def handle_tts(conn: Connection[TTSParams]) -> None:
             await conn.send(orjson.dumps({"error": error_msg}).decode())
             continue
 
-        kokoro: KokoroAdapter = conn.state.kokoro
+        tts: TTSBackend = conn.state.tts
         params = SynthesisParams(voice=request.voice, speed=request.speed, lang=request.lang)
         logger.info(
             "speech request",
@@ -38,7 +38,7 @@ async def handle_tts(conn: Connection[TTSParams]) -> None:
             text_len=len(request.input),
         )
 
-        async for samples, _sr in kokoro.synthesize_stream(request.input, params=params):
+        async for samples, _sr in tts.synthesize_stream(request.input, params=params):
             await conn.send(
                 orjson.dumps(
                     {

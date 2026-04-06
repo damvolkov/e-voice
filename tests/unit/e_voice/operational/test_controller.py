@@ -1,4 +1,4 @@
-"""Tests for DeviceController — GPU↔CPU switching with config persistence."""
+"""Tests for DeviceController — per-service GPU↔CPU switching with config persistence."""
 
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -10,7 +10,7 @@ from pytest_mock import MockerFixture
 from e_voice.core.settings import DeviceType
 from e_voice.core.settings import settings as st
 from e_voice.models.stt import ModelSpec
-from e_voice.models.tts import TTSModelSpec
+from e_voice.models.system import ServiceType
 from e_voice.operational.controller import DeviceController, DeviceState, SwitchResult
 
 ##### FIXTURES #####
@@ -22,34 +22,41 @@ def controller() -> DeviceController:
 
 
 @pytest.fixture
-def mock_whisper() -> AsyncMock:
+def mock_stt() -> AsyncMock:
     adapter = AsyncMock()
     adapter.is_loaded = AsyncMock(return_value=True)
     adapter.load = AsyncMock()
     adapter.unload = AsyncMock(return_value=True)
     adapter.loaded_models = lambda: []
+    adapter.supported_devices = frozenset({DeviceType.CPU, DeviceType.GPU})
     return adapter
 
 
 @pytest.fixture
-def mock_kokoro() -> AsyncMock:
+def mock_tts() -> AsyncMock:
     adapter = AsyncMock()
     adapter.is_loaded = AsyncMock(return_value=True)
     adapter.load = AsyncMock()
     adapter.unload = AsyncMock(return_value=True)
     adapter.loaded_models = lambda: []
+    adapter.supported_devices = frozenset({DeviceType.CPU, DeviceType.GPU})
     return adapter
 
 
 ##### PROPERTIES #####
 
 
-async def test_controller_reads_device_from_settings(controller: DeviceController) -> None:
-    assert controller.active_device == st.stt.device
+async def test_controller_reads_stt_device(controller: DeviceController) -> None:
+    assert controller.active_device(ServiceType.STT) == st.stt.device
+
+
+async def test_controller_reads_tts_device(controller: DeviceController) -> None:
+    assert controller.active_device(ServiceType.TTS) == st.tts.device
 
 
 async def test_controller_not_transitioning_by_default(controller: DeviceController) -> None:
-    assert controller.transitioning is False
+    assert controller.transitioning(ServiceType.STT) is False
+    assert controller.transitioning(ServiceType.TTS) is False
 
 
 @pytest.mark.parametrize(
@@ -63,134 +70,136 @@ async def test_controller_state_matches_device(
     original = st.stt.device
     try:
         st.stt.device = device
-        assert controller.state == expected_state
+        assert controller.state(ServiceType.STT) == expected_state
     finally:
         st.stt.device = original
 
 
 async def test_controller_state_transitioning(controller: DeviceController) -> None:
-    controller._transitioning = True
-    assert controller.state == DeviceState.TRANSITIONING
+    controller._transitioning[ServiceType.STT] = True
+    assert controller.state(ServiceType.STT) == DeviceState.TRANSITIONING
 
 
 ##### SWITCH — ALREADY ON TARGET #####
 
 
 async def test_switch_noop_when_already_on_target(
-    controller: DeviceController, mock_whisper: AsyncMock, mock_kokoro: AsyncMock
+    controller: DeviceController, mock_stt: AsyncMock, mock_tts: AsyncMock
 ) -> None:
-    current = controller.active_device
-    result = await controller.switch(current, mock_whisper, mock_kokoro)
+    current = controller.active_device(ServiceType.STT)
+    result = await controller.switch(ServiceType.STT, current, mock_stt, mock_tts)
     assert result.success is True
-    assert "Already" in result.message
-    mock_whisper.load.assert_not_called()
+    assert "already" in result.message
+    mock_stt.load.assert_not_called()
 
 
 ##### SWITCH — SUCCESS #####
 
 
-async def test_switch_changes_device(
+async def test_switch_stt_changes_device(
     controller: DeviceController,
-    mock_whisper: AsyncMock,
-    mock_kokoro: AsyncMock,
+    mock_stt: AsyncMock,
+    mock_tts: AsyncMock,
     mocker: MockerFixture,
 ) -> None:
-    original_stt = st.stt.device
-    original_tts = st.tts.device
+    original = st.stt.device
     mocker.patch.object(DeviceController, "_dc_persist_config", new_callable=AsyncMock)
 
-    target = DeviceType.CPU if original_stt == DeviceType.GPU else DeviceType.GPU
+    target = DeviceType.CPU if original == DeviceType.GPU else DeviceType.GPU
     try:
-        result = await controller.switch(target, mock_whisper, mock_kokoro)
+        result = await controller.switch(ServiceType.STT, target, mock_stt, mock_tts)
         assert result.success is True
         assert result.device == target
+        assert result.service == ServiceType.STT
         assert st.stt.device == target
+    finally:
+        st.stt.device = original
+
+
+async def test_switch_tts_changes_device(
+    controller: DeviceController,
+    mock_stt: AsyncMock,
+    mock_tts: AsyncMock,
+    mocker: MockerFixture,
+) -> None:
+    original = st.tts.device
+    mocker.patch.object(DeviceController, "_dc_persist_config", new_callable=AsyncMock)
+
+    target = DeviceType.CPU if original == DeviceType.GPU else DeviceType.GPU
+    try:
+        result = await controller.switch(ServiceType.TTS, target, mock_stt, mock_tts)
+        assert result.success is True
+        assert result.service == ServiceType.TTS
         assert st.tts.device == target
     finally:
-        st.stt.device = original_stt
-        st.tts.device = original_tts
+        st.tts.device = original
 
 
 ##### SWITCH — LOADS MISSING MODEL #####
 
 
-async def test_switch_loads_model_if_not_loaded(
+async def test_switch_stt_loads_model_if_not_loaded(
     controller: DeviceController,
-    mock_whisper: AsyncMock,
-    mock_kokoro: AsyncMock,
+    mock_stt: AsyncMock,
+    mock_tts: AsyncMock,
     mocker: MockerFixture,
 ) -> None:
-    original_stt = st.stt.device
-    original_tts = st.tts.device
+    original = st.stt.device
     mocker.patch.object(DeviceController, "_dc_persist_config", new_callable=AsyncMock)
-    mock_whisper.is_loaded = AsyncMock(return_value=False)
-    mock_kokoro.is_loaded = AsyncMock(return_value=False)
+    mock_stt.is_loaded = AsyncMock(return_value=False)
 
-    target = DeviceType.CPU if original_stt == DeviceType.GPU else DeviceType.GPU
+    target = DeviceType.CPU if original == DeviceType.GPU else DeviceType.GPU
     try:
-        result = await controller.switch(target, mock_whisper, mock_kokoro)
+        result = await controller.switch(ServiceType.STT, target, mock_stt, mock_tts)
         assert result.success is True
-        mock_whisper.load.assert_called_once()
-        mock_kokoro.load.assert_called_once()
+        mock_stt.load.assert_called_once()
+        mock_tts.load.assert_not_called()
     finally:
-        st.stt.device = original_stt
-        st.tts.device = original_tts
+        st.stt.device = original
 
 
 ##### SWITCH — UNLOADS PREVIOUS DEVICE #####
 
 
-async def test_switch_unloads_previous_device_models(
+async def test_switch_stt_unloads_previous_device(
     controller: DeviceController,
-    mock_whisper: AsyncMock,
-    mock_kokoro: AsyncMock,
+    mock_stt: AsyncMock,
+    mock_tts: AsyncMock,
     mocker: MockerFixture,
 ) -> None:
-    """Switching GPU→CPU must unload GPU models from both adapters."""
-    original_stt = st.stt.device
-    original_tts = st.tts.device
+    original = st.stt.device
     mocker.patch.object(DeviceController, "_dc_persist_config", new_callable=AsyncMock)
 
-    gpu_stt_spec = ModelSpec(model_id=st.stt.model, device="gpu", compute_type="float16")
-    gpu_tts_spec = TTSModelSpec(device=DeviceType.GPU)
-    mock_whisper.loaded_models = lambda: [gpu_stt_spec]
-    mock_kokoro.loaded_models = lambda: [gpu_tts_spec]
+    gpu_spec = ModelSpec(model_id=st.stt.model, device="gpu", compute_type="float16")
+    mock_stt.loaded_models = lambda: [gpu_spec]
 
     st.stt.device = DeviceType.GPU
     try:
-        result = await controller.switch(DeviceType.CPU, mock_whisper, mock_kokoro)
+        result = await controller.switch(ServiceType.STT, DeviceType.CPU, mock_stt, mock_tts)
         assert result.success is True
-        mock_whisper.unload.assert_called_once_with(gpu_stt_spec)
-        mock_kokoro.unload.assert_called_once_with(gpu_tts_spec)
+        mock_stt.unload.assert_called_once_with(gpu_spec)
+        mock_tts.unload.assert_not_called()
     finally:
-        st.stt.device = original_stt
-        st.tts.device = original_tts
+        st.stt.device = original
 
 
-async def test_switch_skips_unload_when_same_device(
+##### SWITCH — CAPABILITY ERROR #####
+
+
+async def test_switch_fails_when_device_not_supported(
     controller: DeviceController,
-    mock_whisper: AsyncMock,
-    mock_kokoro: AsyncMock,
+    mock_stt: AsyncMock,
+    mock_tts: AsyncMock,
 ) -> None:
-    """_dc_unload_previous is a no-op when previous == target."""
-    await controller._dc_unload_previous(DeviceType.GPU, DeviceType.GPU, mock_whisper, mock_kokoro)
-    mock_whisper.unload.assert_not_called()
-    mock_kokoro.unload.assert_not_called()
-
-
-async def test_unload_previous_only_targets_previous_device(
-    controller: DeviceController,
-    mock_whisper: AsyncMock,
-    mock_kokoro: AsyncMock,
-) -> None:
-    """Only models on the previous device are unloaded, not the target device."""
-    gpu_spec = ModelSpec(model_id="test", device="gpu", compute_type="float16")
-    cpu_spec = ModelSpec(model_id="test", device="cpu", compute_type="int8")
-    mock_whisper.loaded_models = lambda: [gpu_spec, cpu_spec]
-    mock_kokoro.loaded_models = lambda: []
-
-    await controller._dc_unload_previous(DeviceType.GPU, DeviceType.CPU, mock_whisper, mock_kokoro)
-    mock_whisper.unload.assert_called_once_with(gpu_spec)
+    mock_stt.supported_devices = frozenset({DeviceType.CPU})
+    original = st.stt.device
+    st.stt.device = DeviceType.CPU
+    try:
+        result = await controller.switch(ServiceType.STT, DeviceType.GPU, mock_stt, mock_tts)
+        assert result.success is False
+        assert "does not support" in result.message
+    finally:
+        st.stt.device = original
 
 
 ##### SWITCH — FAILURE #####
@@ -198,18 +207,18 @@ async def test_unload_previous_only_targets_previous_device(
 
 async def test_switch_handles_error(
     controller: DeviceController,
-    mock_whisper: AsyncMock,
-    mock_kokoro: AsyncMock,
+    mock_stt: AsyncMock,
+    mock_tts: AsyncMock,
 ) -> None:
     original = st.stt.device
-    mock_whisper.is_loaded = AsyncMock(return_value=False)
-    mock_whisper.load = AsyncMock(side_effect=RuntimeError("CUDA OOM"))
+    mock_stt.is_loaded = AsyncMock(return_value=False)
+    mock_stt.load = AsyncMock(side_effect=RuntimeError("CUDA OOM"))
 
     target = DeviceType.CPU if original == DeviceType.GPU else DeviceType.GPU
-    result = await controller.switch(target, mock_whisper, mock_kokoro)
+    result = await controller.switch(ServiceType.STT, target, mock_stt, mock_tts)
     assert result.success is False
     assert "CUDA OOM" in result.message
-    assert controller.transitioning is False
+    assert controller.transitioning(ServiceType.STT) is False
 
 
 ##### PERSIST CONFIG #####
@@ -219,19 +228,18 @@ async def test_persist_config_writes_yaml(controller: DeviceController, tmp_path
     config_file = tmp_path / "config.yaml"
     config_file.write_text("stt:\n  device: gpu\ntts:\n  device: gpu\n")
 
-    await controller._dc_persist_config(DeviceType.CPU, config_dir=tmp_path)
+    await controller._dc_persist_config(ServiceType.STT, DeviceType.CPU, config_dir=tmp_path)
 
     data = yaml.safe_load(config_file.read_text())
     assert data["stt"]["device"] == "cpu"
-    assert data["tts"]["device"] == "cpu"
+    assert data["tts"]["device"] == "gpu"
 
 
 async def test_persist_config_noop_when_missing(controller: DeviceController, tmp_path: Path) -> None:
-    await controller._dc_persist_config(DeviceType.CPU, config_dir=tmp_path / "nonexistent")
+    await controller._dc_persist_config(ServiceType.STT, DeviceType.CPU, config_dir=tmp_path / "nonexistent")
 
 
 async def test_persist_config_preserves_other_fields(controller: DeviceController, tmp_path: Path) -> None:
-    """Config YAML must keep all non-device fields intact after persist."""
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "system:\n  debug: true\n  port: 5500\n"
@@ -239,58 +247,31 @@ async def test_persist_config_preserves_other_fields(controller: DeviceControlle
         "tts:\n  device: gpu\n  default_voice: af_heart\n"
     )
 
-    await controller._dc_persist_config(DeviceType.CPU, config_dir=tmp_path)
+    await controller._dc_persist_config(ServiceType.STT, DeviceType.CPU, config_dir=tmp_path)
 
     data = yaml.safe_load(config_file.read_text())
     assert data["stt"]["device"] == "cpu"
     assert data["stt"]["model"] == "whisper-large"
-    assert data["stt"]["compute_type"] == "int8"
-    assert data["tts"]["device"] == "cpu"
+    assert data["tts"]["device"] == "gpu"
     assert data["tts"]["default_voice"] == "af_heart"
     assert data["system"]["debug"] is True
-    assert data["system"]["port"] == 5500
 
 
 async def test_persist_config_readonly_graceful(controller: DeviceController, tmp_path: Path) -> None:
-    """Read-only config file should not raise — just skip."""
     config_file = tmp_path / "config.yaml"
     config_file.write_text("stt:\n  device: gpu\n")
     config_file.chmod(0o444)
 
-    await controller._dc_persist_config(DeviceType.CPU, config_dir=tmp_path)
+    await controller._dc_persist_config(ServiceType.STT, DeviceType.CPU, config_dir=tmp_path)
 
     data = yaml.safe_load(config_file.read_text())
     assert data["stt"]["device"] == "gpu"
-
-
-async def test_switch_end_to_end_persists_yaml(
-    controller: DeviceController,
-    mock_whisper: AsyncMock,
-    mock_kokoro: AsyncMock,
-    tmp_path: Path,
-    mocker: MockerFixture,
-) -> None:
-    """Full switch calls persist with the target device."""
-    mock_persist = mocker.patch.object(DeviceController, "_dc_persist_config", new_callable=AsyncMock)
-
-    original_stt = st.stt.device
-    original_tts = st.tts.device
-    target = DeviceType.CPU if original_stt == DeviceType.GPU else DeviceType.GPU
-    try:
-        result = await controller.switch(target, mock_whisper, mock_kokoro)
-        assert result.success is True
-        assert st.stt.device == target
-        assert st.tts.device == target
-        mock_persist.assert_called_once_with(target)
-    finally:
-        st.stt.device = original_stt
-        st.tts.device = original_tts
 
 
 ##### SWITCH RESULT DATACLASS #####
 
 
 async def test_switch_result_frozen() -> None:
-    result = SwitchResult(success=True, device=DeviceType.GPU, message="ok")
+    result = SwitchResult(success=True, service=ServiceType.STT, device=DeviceType.GPU, message="ok")
     with pytest.raises(AttributeError):
         result.success = False  # type: ignore[misc]

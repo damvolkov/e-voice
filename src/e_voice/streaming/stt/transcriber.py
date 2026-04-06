@@ -5,14 +5,13 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 
 import numpy as np
-from faster_whisper.transcribe import Segment
 from numpy.typing import NDArray
 
-from e_voice.adapters.whisper import WhisperAdapter
+from e_voice.adapters.base import STTBackend
 from e_voice.core.settings import settings as st
-from e_voice.models.stt import InferenceParams
-from e_voice.streaming.audio import AudioBuffer
-from e_voice.streaming.text import (
+from e_voice.models.stt import InferenceParams, Span
+from e_voice.streaming.stt.audio import AudioBuffer
+from e_voice.streaming.stt.text import (
     StreamingWord,
     WordBuffer,
     common_prefix,
@@ -20,7 +19,7 @@ from e_voice.streaming.text import (
     last_full_sentence_text,
     words_to_text,
 )
-from e_voice.streaming.vad import SpeechStateTracker
+from e_voice.streaming.stt.vad import SpeechStateTracker
 
 ##### EVENTS #####
 
@@ -151,7 +150,7 @@ class SessionState:
 
 async def process_audio_chunk(
     session: SessionState,
-    whisper: WhisperAdapter,
+    stt: STTBackend,
     audio_samples: NDArray[np.float32],
 ) -> StreamingEvent | None:
     """Core processing: append audio, transcribe if enough accumulated, apply LocalAgreement."""
@@ -169,7 +168,7 @@ async def process_audio_chunk(
 
     prompt_text = _build_prompt(session.confirmed)
 
-    result = await whisper.transcribe(
+    transcript = await stt.transcribe(
         audio_slice,
         params=InferenceParams(
             language=session.language,
@@ -179,12 +178,10 @@ async def process_audio_chunk(
             vad_filter=False,
         ),
     )
-    segments, _info = result
-    assert isinstance(segments, list)
 
     session._ss_last_transcribe_end = session.audio_buffer.total_duration
 
-    incoming_words = _extract_words(segments, audio_start, st.streaming.no_speech_threshold)
+    incoming_words = _extract_words(transcript.spans, audio_start, st.streaming.no_speech_threshold)
 
     if not incoming_words:
         return None
@@ -278,21 +275,21 @@ def _build_prompt(confirmed: WordBuffer) -> str | None:
 
 
 def _extract_words(
-    segments: list[Segment],
+    spans: tuple[Span, ...],
     audio_offset: float,
     no_speech_threshold: float,
 ) -> list[StreamingWord]:
-    """Convert faster-whisper Segments to StreamingWord list. Filters by no_speech_prob."""
+    """Convert domain Spans to StreamingWord list. Filters by no_speech_prob."""
     words: list[StreamingWord] = []
-    for seg in segments:
-        if seg.no_speech_prob > no_speech_threshold:
+    for span in spans:
+        if span.no_speech_prob > no_speech_threshold:
             continue
-        if not seg.words:
+        if not span.words:
             continue
-        for w in seg.words:
+        for w in span.words:
             words.append(
                 StreamingWord(
-                    word=w.word.strip(),
+                    word=w.text,
                     start=w.start + audio_offset,
                     end=w.end + audio_offset,
                     probability=w.probability,

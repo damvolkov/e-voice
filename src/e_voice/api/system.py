@@ -6,13 +6,13 @@ from urllib.parse import unquote
 import orjson
 from robyn import Request, Response, status_codes
 
-from e_voice.adapters.kokoro import KokoroAdapter
-from e_voice.adapters.whisper import WhisperAdapter
+from e_voice.adapters.base import STTBackend, TTSBackend
+from e_voice.adapters.registry import available_backends
 from e_voice.core.logger import logger
 from e_voice.core.router import Router
 from e_voice.core.settings import DeviceType
 from e_voice.core.settings import settings as st
-from e_voice.models.error import error_response
+from e_voice.models.error import BackendCapabilityError, error_response
 from e_voice.models.system import (
     DownloadRequest,
     DownloadResponse,
@@ -36,14 +36,14 @@ async def download_model(request: Request, body: DownloadRequest, global_depende
     try:
         match body.service:
             case ServiceType.STT:
-                whisper: WhisperAdapter = global_dependencies.get("state").whisper
+                stt: STTBackend = global_dependencies.get("state").stt
                 logger.info("downloading STT model", step="DOWNLOAD", model=body.model)
-                path = await whisper.download(body.model)
+                path = await stt.download(body.model)
 
             case ServiceType.TTS:
-                kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
+                tts: TTSBackend = global_dependencies.get("state").tts
                 logger.info("downloading TTS model", step="DOWNLOAD", model=body.model)
-                path = await kokoro.download(body.model)
+                path = await tts.download(body.model)
 
         logger.info("model downloaded", step="DOWNLOAD", service=body.service.value, model=body.model)
 
@@ -58,6 +58,8 @@ async def download_model(request: Request, body: DownloadRequest, global_depende
             ).model_dump_json(),
         )
 
+    except BackendCapabilityError as exc:
+        return error_response(request.url.path, 501, str(exc))
     except (OSError, RuntimeError) as exc:
         logger.error("download failed", step="DOWNLOAD", service=body.service.value, model=body.model, error=str(exc))
         return error_response(
@@ -73,43 +75,58 @@ def _dir_size_mb(path: Path) -> float:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / (1024 * 1024)
 
 
-@router.get("/models/list")
-async def list_downloaded_models() -> Response:
-    """List all downloaded models on disk, grouped by service."""
-    stt_dir = st.MODELS_PATH / "stt"
-    stt_models = (
-        [
-            ModelEntry(
-                id=d.name.removeprefix("models--").replace("--", "/"),
-                service="stt",
-                path=str(d),
-                size_mb=round(_dir_size_mb(d), 1),
-            )
-            for d in sorted(stt_dir.iterdir())
-            if d.is_dir() and d.name.startswith("models--")
-        ]
-        if stt_dir.exists()
-        else []
-    )
+def _scan_stt_models() -> list[ModelEntry]:
+    """Scan STT backend model directory for downloaded models."""
+    stt_dir = st.MODELS_PATH / "stt" / st.stt.backend
+    if not stt_dir.exists():
+        return []
+    return [
+        ModelEntry(
+            id=d.name.removeprefix("models--").replace("--", "/"),
+            service="stt",
+            path=str(d),
+            size_mb=round(_dir_size_mb(d), 1),
+        )
+        for d in sorted(stt_dir.iterdir())
+        if d.is_dir() and d.name.startswith("models--")
+    ]
 
-    tts_dir = st.MODELS_PATH / "tts"
-    tts_models = (
-        [
-            ModelEntry(
-                id="kokoro",
-                service="tts",
-                path=str(tts_dir),
-                size_mb=round(_dir_size_mb(tts_dir), 1),
-            )
-        ]
-        if tts_dir.exists() and any(tts_dir.glob("*.onnx"))
-        else []
-    )
 
+def _scan_tts_models() -> list[ModelEntry]:
+    """Scan TTS backend model directory for downloaded models."""
+    tts_dir = st.MODELS_PATH / "tts" / st.tts.backend
+    if not tts_dir.exists():
+        return []
+    has_models = any(tts_dir.glob("*.onnx")) or any(tts_dir.glob("*.bin")) or any(tts_dir.glob("*.pt"))
+    if not has_models:
+        return []
+    return [
+        ModelEntry(
+            id=st.tts.backend,
+            service="tts",
+            path=str(tts_dir),
+            size_mb=round(_dir_size_mb(tts_dir), 1),
+        )
+    ]
+
+
+@router.get("/system/backends")
+async def get_backends() -> Response:
+    """Return active and available backends per service."""
     return Response(
         status_code=status_codes.HTTP_200_OK,
         headers={"content-type": "application/json"},
-        description=ModelsListResponse(stt=stt_models, tts=tts_models).model_dump_json(),
+        description=orjson.dumps(available_backends()).decode(),
+    )
+
+
+@router.get("/models/list")
+async def list_downloaded_models() -> Response:
+    """List all downloaded models on disk for the active backends."""
+    return Response(
+        status_code=status_codes.HTTP_200_OK,
+        headers={"content-type": "application/json"},
+        description=ModelsListResponse(stt=_scan_stt_models(), tts=_scan_tts_models()).model_dump_json(),
     )
 
 
@@ -119,9 +136,9 @@ async def list_downloaded_models() -> Response:
 @router.get("/api/ps")
 async def list_loaded_models(global_dependencies) -> LoadedModelsResponse:
     """List all loaded/running models across adapters."""
-    whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
-    models = [s.model_id for s in whisper.loaded_models()] + [s.model_id for s in kokoro.loaded_models()]
+    stt: STTBackend = global_dependencies.get("state").stt
+    tts: TTSBackend = global_dependencies.get("state").tts
+    models = [s.model_id for s in stt.loaded_models()] + [s.model_id for s in tts.loaded_models()]
     return LoadedModelsResponse(models=models)
 
 
@@ -129,9 +146,9 @@ async def list_loaded_models(global_dependencies) -> LoadedModelsResponse:
 async def load_model(request: Request, model_id: str, global_dependencies) -> Response:
     """Load a model into memory. Returns 409 if already loaded."""
     model_id = unquote(model_id)
-    whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
-    loaded = {s.model_id for s in whisper.loaded_models()} | {s.model_id for s in kokoro.loaded_models()}
+    stt: STTBackend = global_dependencies.get("state").stt
+    tts: TTSBackend = global_dependencies.get("state").tts
+    loaded = {s.model_id for s in stt.loaded_models()} | {s.model_id for s in tts.loaded_models()}
 
     if model_id in loaded:
         return error_response(request.url.path, 409, f"Model '{model_id}' is already loaded")
@@ -143,21 +160,21 @@ async def load_model(request: Request, model_id: str, global_dependencies) -> Re
 async def unload_model(request: Request, model_id: str, global_dependencies) -> Response:
     """Unload a model from memory. Returns 404 if not loaded."""
     model_id = unquote(model_id)
-    whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
+    stt: STTBackend = global_dependencies.get("state").stt
+    tts: TTSBackend = global_dependencies.get("state").tts
 
-    for spec in whisper.loaded_models():
+    for spec in stt.loaded_models():
         if spec.model_id == model_id:
-            await whisper.unload(spec)
+            await stt.unload(spec)
             return Response(
                 status_code=status_codes.HTTP_200_OK,
                 headers={"content-type": "application/json"},
                 description=orjson.dumps({"status": "unloaded", "model": model_id}).decode(),
             )
 
-    for spec in kokoro.loaded_models():
+    for spec in tts.loaded_models():
         if spec.model_id == model_id:
-            await kokoro.unload(spec)
+            await tts.unload(spec)
             return Response(
                 status_code=status_codes.HTTP_200_OK,
                 headers={"content-type": "application/json"},
@@ -205,16 +222,23 @@ async def get_monitor(global_dependencies) -> Response:
 
 @router.get("/system/device")
 async def get_device(global_dependencies) -> Response:
-    """Return current device mode and transition state."""
+    """Return per-service device state for STT and TTS."""
     ctrl: DeviceController = global_dependencies.get("state").device_controller
     return Response(
         status_code=status_codes.HTTP_200_OK,
         headers={"content-type": "application/json"},
         description=orjson.dumps(
             {
-                "device": ctrl.active_device.value,
-                "state": ctrl.state.value,
-                "transitioning": ctrl.transitioning,
+                "stt": {
+                    "device": ctrl.active_device(ServiceType.STT).value,
+                    "state": ctrl.state(ServiceType.STT).value,
+                    "transitioning": ctrl.transitioning(ServiceType.STT),
+                },
+                "tts": {
+                    "device": ctrl.active_device(ServiceType.TTS).value,
+                    "state": ctrl.state(ServiceType.TTS).value,
+                    "transitioning": ctrl.transitioning(ServiceType.TTS),
+                },
             }
         ).decode(),
     )
@@ -222,19 +246,24 @@ async def get_device(global_dependencies) -> Response:
 
 @router.post("/system/device")
 async def switch_device(request: Request, global_dependencies) -> Response:
-    """Switch STT+TTS to a different device (gpu/cpu)."""
+    """Switch a service to a different device (gpu/cpu). Requires 'service' and 'device' in body."""
     body = orjson.loads(request.body)
     target_str = body.get("device", "").lower()
+    service_str = body.get("service", "").lower()
 
     if target_str not in ("gpu", "cpu"):
         return error_response(request.url.path, 400, f"Invalid device: '{target_str}'. Use 'gpu' or 'cpu'.")
 
-    target = DeviceType.GPU if target_str == "gpu" else DeviceType.CPU
-    ctrl: DeviceController = global_dependencies.get("state").device_controller
-    whisper: WhisperAdapter = global_dependencies.get("state").whisper
-    kokoro: KokoroAdapter = global_dependencies.get("state").kokoro
+    if service_str not in ("stt", "tts"):
+        return error_response(request.url.path, 400, f"Invalid service: '{service_str}'. Use 'stt' or 'tts'.")
 
-    result = await ctrl.switch(target, whisper, kokoro)
+    target = DeviceType.GPU if target_str == "gpu" else DeviceType.CPU
+    service = ServiceType.STT if service_str == "stt" else ServiceType.TTS
+    ctrl: DeviceController = global_dependencies.get("state").device_controller
+    stt: STTBackend = global_dependencies.get("state").stt
+    tts: TTSBackend = global_dependencies.get("state").tts
+
+    result = await ctrl.switch(service, target, stt, tts)
 
     return Response(
         status_code=status_codes.HTTP_200_OK if result.success else status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -242,6 +271,7 @@ async def switch_device(request: Request, global_dependencies) -> Response:
         description=orjson.dumps(
             {
                 "success": result.success,
+                "service": result.service.value,
                 "device": result.device.value,
                 "message": result.message,
             }

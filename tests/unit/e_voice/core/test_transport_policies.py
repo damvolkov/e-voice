@@ -11,14 +11,14 @@ from collections.abc import AsyncGenerator
 import numpy as np
 import orjson
 import pytest
-from faster_whisper.transcribe import Segment, TranscriptionInfo
 from robyn import Headers, Response, SSEMessage, SSEResponse, StreamingResponse
 
-from e_voice.adapters.whisper import build_response, format_segment
 from e_voice.core.audio import Audio
 from e_voice.core.router import parse_response
+from e_voice.models.stt import Span, Transcript
+from e_voice.models.transcription import build_transcript_response, format_span
 from e_voice.models.tts import SpeechAudioDeltaEvent, SpeechAudioDoneEvent
-from e_voice.streaming.transcriber import StreamingEvent, StreamingEventType
+from e_voice.streaming.stt.transcriber import StreamingEvent, StreamingEventType
 from e_voice.websockets.stt import format_event
 
 ##### STUBS #####
@@ -26,35 +26,19 @@ from e_voice.websockets.stt import format_event
 _FAKE_AUDIO_F32 = np.zeros(24_000, dtype=np.float32)
 
 
-def _segment(
+def _span(
     text: str = " Hello world.",
     start: float = 0.0,
     end: float = 1.0,
-) -> Segment:
-    return Segment(
-        id=0,
-        seek=0,
-        start=start,
-        end=end,
-        text=text,
-        tokens=[1, 2, 3],
-        avg_logprob=-0.5,
-        compression_ratio=1.0,
-        no_speech_prob=0.01,
-        words=None,
-        temperature=0.0,
-    )
+) -> Span:
+    return Span(text=text, start=start, end=end)
 
 
-def _info(language: str = "en") -> TranscriptionInfo:
-    return TranscriptionInfo(
+def _transcript(spans: list[Span] | None = None, language: str = "en") -> Transcript:
+    return Transcript(
+        spans=tuple(spans or [_span()]),
         language=language,
-        language_probability=0.99,
         duration=1.0,
-        duration_after_vad=1.0,
-        all_language_probs=None,
-        transcription_options=None,  # ty: ignore[invalid-argument-type]
-        vad_options=None,  # ty: ignore[invalid-argument-type]
     )
 
 
@@ -113,19 +97,19 @@ async def test_parse_response_type_dispatch(input_val, expected_type) -> None:
 
 
 async def test_stt_http_text_format() -> None:
-    body, ct = build_response([_segment()], _info(), np.zeros(16000, dtype=np.float32), "text")
+    body, ct = build_transcript_response(_transcript(), "text")
     assert ct == "text/plain"
     assert body == "Hello world."
 
 
 async def test_stt_http_json_format() -> None:
-    body, ct = build_response([_segment()], _info(), np.zeros(16000, dtype=np.float32), "json")
+    body, ct = build_transcript_response(_transcript(), "json")
     assert ct == "application/json"
     assert orjson.loads(body)["text"] == "Hello world."
 
 
 async def test_stt_http_verbose_json_format() -> None:
-    body, ct = build_response([_segment()], _info(), np.zeros(16000, dtype=np.float32), "verbose_json")
+    body, ct = build_transcript_response(_transcript(), "verbose_json")
     assert ct == "application/json"
     parsed = orjson.loads(body)
     assert "segments" in parsed
@@ -135,10 +119,8 @@ async def test_stt_http_verbose_json_format() -> None:
 
 @pytest.mark.parametrize("fmt", ["srt", "vtt"], ids=["srt", "vtt"])
 async def test_stt_http_subtitle_formats(fmt: str) -> None:
-    body, ct = build_response(  # ty: ignore[no-matching-overload]
-        [_segment(text=" Hello.", start=0.0, end=1.0)],
-        _info(),
-        np.zeros(16000, dtype=np.float32),
+    body, ct = build_transcript_response(
+        _transcript(spans=[_span(text=" Hello.", start=0.0, end=1.0)]),
         fmt,
     )
     assert ct == "text/plain"
@@ -167,7 +149,7 @@ async def test_stt_sse_message_with_event_type() -> None:
 
 
 async def test_stt_sse_segment_message() -> None:
-    msg = SSEMessage(data=format_segment(_segment(), "text"))
+    msg = SSEMessage(data=format_span(_span(), "text"))
     assert "data:" in msg
     assert "Hello world." in msg
 

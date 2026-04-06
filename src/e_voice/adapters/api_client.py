@@ -153,6 +153,21 @@ class APIClient:
         except Exception:
             return []
 
+    ##### BACKENDS #####
+
+    def get_backends(self) -> dict:
+        """Return active and available backends per service."""
+        try:
+            with self._http() as c:
+                resp = c.get("/v1/system/backends")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception:
+            return {
+                "stt": {"active": "unknown", "available": []},
+                "tts": {"active": "unknown", "available": []},
+            }
+
     ##### MODELS #####
 
     def get_models(self) -> list[str]:
@@ -214,24 +229,25 @@ class APIClient:
             }
 
     def get_device(self) -> dict:
-        """Return current device state."""
+        """Return per-service device state: {stt: {...}, tts: {...}}."""
         try:
             with self._http() as c:
                 resp = c.get("/v1/system/device")
                 resp.raise_for_status()
                 return resp.json()
         except Exception:
-            return {"device": "unknown", "state": "unknown", "transitioning": False}
+            _fallback = {"device": "unknown", "state": "unknown", "transitioning": False}
+            return {"stt": _fallback, "tts": _fallback}
 
-    def switch_device(self, device: str) -> dict:
-        """Switch to target device (gpu/cpu). Returns result dict."""
+    def switch_device(self, device: str, service: str = "stt") -> dict:
+        """Switch a service (stt/tts) to target device (gpu/cpu)."""
         try:
             with self._http() as c:
-                resp = c.post("/v1/system/device", json={"device": device}, timeout=120.0)
+                resp = c.post("/v1/system/device", json={"device": device, "service": service}, timeout=120.0)
                 resp.raise_for_status()
                 return resp.json()
         except Exception as exc:
-            return {"success": False, "device": device, "message": str(exc)}
+            return {"success": False, "service": service, "device": device, "message": str(exc)}
 
 
 ##### LIVE STREAM (WebSocket STT) #####

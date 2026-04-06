@@ -1,4 +1,4 @@
-"""Kokoro-ONNX adapter — TTS model lifecycle and speech synthesis."""
+"""Kokoro-ONNX adapter — implements TTSBackend with local ONNX model lifecycle."""
 
 import asyncio
 import gc
@@ -7,20 +7,16 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import httpx
-import numpy as np
 import onnxruntime as ort
 from kokoro_onnx import Kokoro
-from numpy.typing import NDArray
 
-from e_voice.adapters.base import BaseModelAdapter
+from e_voice.adapters.base import TTSBackend
 from e_voice.core.logger import logger
+from e_voice.core.settings import DeviceType
 from e_voice.core.settings import settings as st
-from e_voice.models.tts import OnnxProvider, SynthesisParams, TTSModelSpec
+from e_voice.models.tts import AudioChunk, OnnxProvider, SynthesisParams, TTSModelSpec
 
-type AudioChunk = tuple[NDArray[np.float32], int]
-
-
-# ── Pure Helpers ───────────────────────────────────────────────────────
+##### HELPERS #####
 
 
 def _resolve_provider(device: str) -> OnnxProvider:
@@ -34,10 +30,10 @@ def _resolve_provider(device: str) -> OnnxProvider:
     return OnnxProvider.CPU
 
 
-# ── Adapter ────────────────────────────────────────────────────────────
+##### ADAPTER #####
 
 
-class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
+class KokoroAdapter(TTSBackend):
     """Manages Kokoro-ONNX TTS model registry and synthesis."""
 
     __slots__ = ("_models", "_voices")
@@ -46,19 +42,20 @@ class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
         self._models: dict[TTSModelSpec, Kokoro] = {}
         self._voices: list[str] = []
 
-    # ── Properties ─────────────────────────────────────────────────────
+    # ── Capabilities ──────────────────────────────────────────────────
+
+    @property
+    def supported_devices(self) -> frozenset[DeviceType]:
+        return frozenset({DeviceType.CPU, DeviceType.GPU})
+
+    # ── Properties ────────────────────────────────────────────────────
 
     @property
     def voices(self) -> list[str]:
         """Available voice IDs (cached after first model load)."""
         return self._voices
 
-    @property
-    def loaded(self) -> list[TTSModelSpec]:
-        """Currently loaded model specs."""
-        return list(self._models)
-
-    # ── Model Lifecycle ────────────────────────────────────────────────
+    # ── Model Lifecycle ───────────────────────────────────────────────
 
     async def load(self, spec: TTSModelSpec | None = None) -> None:
         """Download (if needed) and load Kokoro model. Idempotent."""
@@ -66,13 +63,13 @@ class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
         if target in self._models:
             return
 
-        model_dir = st.MODELS_PATH / "tts"
+        model_dir = st.MODELS_PATH / "tts" / st.tts.backend
         model_dir.mkdir(parents=True, exist_ok=True)
         model_path = model_dir / st.tts.model_filename
         voices_path = model_dir / st.tts.voices_filename
 
         if not model_path.exists() or not voices_path.exists():
-            await self._download(model_path, voices_path)
+            await self._ka_download_files(model_path, voices_path)
 
         provider = _resolve_provider(target.device.value)
         os.environ["ONNX_PROVIDER"] = provider
@@ -103,43 +100,41 @@ class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
 
     async def download(self, model_id: str = "kokoro") -> Path:
         """Download Kokoro model files to disk. Returns model directory."""
-        model_dir = st.MODELS_PATH / "tts"
+        model_dir = st.MODELS_PATH / "tts" / st.tts.backend
         model_dir.mkdir(parents=True, exist_ok=True)
-        await self._download(model_dir / st.tts.model_filename, model_dir / st.tts.voices_filename)
+        await self._ka_download_files(model_dir / st.tts.model_filename, model_dir / st.tts.voices_filename)
         return model_dir
 
-    # ── Batch Synthesis ────────────────────────────────────────────────
+    # ── Batch Synthesis ───────────────────────────────────────────────
 
     async def synthesize(
         self,
         text: str,
         *,
-        spec: TTSModelSpec | None = None,
         params: SynthesisParams | None = None,
     ) -> AudioChunk:
         """Full synthesis — returns (samples, sample_rate)."""
-        kokoro = self._resolve(spec)
+        kokoro = self._ka_resolve()
         p = params or SynthesisParams()
         return await asyncio.to_thread(kokoro.create, text, p.voice, p.speed, p.lang)
 
-    # ── Streaming Synthesis ────────────────────────────────────────────
+    # ── Streaming Synthesis ───────────────────────────────────────────
 
-    async def synthesize_stream(
+    async def synthesize_stream(  # ty: ignore[invalid-method-override]
         self,
         text: str,
         *,
-        spec: TTSModelSpec | None = None,
         params: SynthesisParams | None = None,
-    ) -> AsyncGenerator[AudioChunk]:
+    ) -> AsyncGenerator[AudioChunk, None]:
         """Yield audio chunks as generated — true streaming."""
-        kokoro = self._resolve(spec)
+        kokoro = self._ka_resolve()
         p = params or SynthesisParams()
         async for chunk in kokoro.create_stream(text, p.voice, p.speed, p.lang):
             yield chunk
 
-    # ── Private ────────────────────────────────────────────────────────
+    # ── Private ───────────────────────────────────────────────────────
 
-    def _resolve(self, spec: TTSModelSpec | None = None) -> Kokoro:
+    def _ka_resolve(self, spec: TTSModelSpec | None = None) -> Kokoro:
         """Resolve spec → loaded Kokoro instance."""
         target = spec or TTSModelSpec(device=st.tts.device)
         if target not in self._models:
@@ -147,7 +142,7 @@ class KokoroAdapter(BaseModelAdapter[TTSModelSpec]):
         return self._models[target]
 
     @staticmethod
-    async def _download(model_path: Path, voices_path: Path) -> None:
+    async def _ka_download_files(model_path: Path, voices_path: Path) -> None:
         """Download model + voices from GitHub releases."""
         base_url = st.tts.release_url
         chunk_size = st.tts.download_chunk_size

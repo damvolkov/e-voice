@@ -5,6 +5,7 @@ system:
   port: 5500
   max_workers: 4
 stt:
+  backend: whisper
   model: mobiuslabsgmbh/faster-whisper-large-v3-turbo
   device: gpu
   device_index: 0
@@ -15,6 +16,7 @@ stt:
   default_response_format: text
   cpu_fallback: true
 tts:
+  backend: kokoro
   device: gpu
   default_voice: af_heart
   default_speed: 1.0

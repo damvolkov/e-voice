@@ -1,4 +1,4 @@
-"""Gradio UI for e-voice — STT/TTS playground + model management."""
+"""Gradio UI for e-voice — STT/TTS playground + backend management."""
 
 import base64
 import threading
@@ -151,7 +151,7 @@ def _synthesize(text: str, voice: str, speed: float) -> str | None:
     return str(tmp)
 
 
-##### VOICE WRAPPERS #####
+##### VOICE HELPERS #####
 
 _LANG_LABELS: dict[str, str] = {
     "en-us": "🇺🇸 English (US)",
@@ -185,45 +185,74 @@ def _fetch_voice_choices() -> list[tuple[str, str]]:
     return choices
 
 
-def _format_voices_display() -> str:
-    """Format voices grouped by language as Markdown."""
-    voices = _api().get_voices()
-    if not voices:
-        return "No voices available — TTS model not loaded."
-
-    grouped: dict[str, list[str]] = {}
-    for v in voices:
-        lang = v.get("language", "unknown")
-        grouped.setdefault(lang, []).append(v["id"])
-
-    lines: list[str] = []
-    for lang in sorted(grouped):
-        label = _LANG_LABELS.get(lang, lang)
-        names = ", ".join(f"`{n}`" for n in sorted(grouped[lang]))
-        lines.append(f"**{label}** — {names}")
-    return "\n\n".join(lines)
+##### BACKEND TAB — STT SECTION #####
 
 
-##### MODEL WRAPPERS #####
+def _build_stt_backend_md() -> str:
+    """Build markdown for STT backend section: active backend + downloaded models."""
+    api = _api()
+    backends = api.get_backends()
+    active = backends.get("stt", {}).get("active", "unknown")
 
+    data = api.get_downloaded_models()
+    stt_models = data.get("stt", [])
 
-def _refresh_models() -> str:
-    data = _api().get_downloaded_models()
-    lines = ["**STT Models:**"]
-    for m in data.get("stt", []):
-        lines.append(f"- `{m['id']}` ({m['size_mb']} MB)")
-    if not data.get("stt"):
-        lines.append("- (none)")
-    lines.append("\n**TTS Models:**")
-    for m in data.get("tts", []):
-        lines.append(f"- `{m['id']}` ({m['size_mb']} MB)")
-    if not data.get("tts"):
+    lines = [f"**Active backend:** `{active}`"]
+    lines.append("\n**Downloaded models:**")
+    if stt_models:
+        for m in stt_models:
+            lines.append(f"- `{m['id']}` ({m['size_mb']} MB)")
+    else:
         lines.append("- (none)")
     return "\n".join(lines)
 
 
-def _download_model(model_id: str, service: str) -> str:
-    return _api().download_model(model_id, service)
+def _download_stt_model(model_id: str) -> tuple[str, str]:
+    """Download STT model, return (result_text, refreshed_md)."""
+    result = _api().download_model(model_id, "stt")
+    return result, _build_stt_backend_md()
+
+
+##### BACKEND TAB — TTS SECTION #####
+
+
+def _build_tts_backend_md() -> str:
+    """Build markdown for TTS backend section: active backend + models + voices."""
+    api = _api()
+    backends = api.get_backends()
+    active = backends.get("tts", {}).get("active", "unknown")
+
+    data = api.get_downloaded_models()
+    tts_models = data.get("tts", [])
+
+    lines = [f"**Active backend:** `{active}`"]
+    lines.append("\n**Downloaded models:**")
+    if tts_models:
+        for m in tts_models:
+            lines.append(f"- `{m['id']}` ({m['size_mb']} MB)")
+    else:
+        lines.append("- (none)")
+
+    voices = api.get_voices()
+    lines.append("\n**Voices:**")
+    if voices:
+        grouped: dict[str, list[str]] = {}
+        for v in voices:
+            grouped.setdefault(v.get("language", "unknown"), []).append(v["id"])
+        for lang in sorted(grouped):
+            label = _LANG_LABELS.get(lang, lang)
+            names = ", ".join(f"`{n}`" for n in sorted(grouped[lang]))
+            lines.append(f"{label} — {names}")
+    else:
+        lines.append("- No voices available — TTS model not loaded.")
+
+    return "\n".join(lines)
+
+
+def _download_tts_model(model_id: str) -> tuple[str, str]:
+    """Download TTS model, return (result_text, refreshed_md)."""
+    result = _api().download_model(model_id, "tts")
+    return result, _build_tts_backend_md()
 
 
 ##### MONITOR — SVG SPARKLINES #####
@@ -255,14 +284,27 @@ def _svg_sparkline(history: Iterable[float], color: str) -> str:
 ##### MONITOR — HTML BUILDER #####
 
 
-def _build_monitor_html() -> str:
-    """Build full monitor card: semaphore row + metric bars + sparklines."""
-    api = _api()
-    device_info = api.get_device()
-    device = device_info.get("device", "unknown")
-    state = device_info.get("state", "unknown")
+def _service_semaphore(label: str, info: dict) -> str:
+    """Build a single service semaphore: colored dot + label + device name."""
+    state = info.get("state", "unknown")
+    device = info.get("device", "unknown")
     sem_color = _DEVICE_COLORS.get(state, "#666")
     pulse = "animation:pulse 1.4s ease-in-out infinite;" if state == "transitioning" else ""
+    return (
+        f'<div style="display:flex;align-items:center;gap:6px">'
+        f'<div style="width:8px;height:8px;border-radius:50%;background:{sem_color};{pulse}"></div>'
+        f'<span style="font-size:11px;color:#6b7f82;font-weight:600">{label}</span>'
+        f'<span style="font-size:11px;font-weight:600;color:#c8d6d8">{device.upper()}</span>'
+        f"</div>"
+    )
+
+
+def _build_monitor_html() -> str:
+    """Build full monitor card: per-service semaphores + metric bars + sparklines."""
+    api = _api()
+    device_info = api.get_device()
+    stt_info = device_info.get("stt", {})
+    tts_info = device_info.get("tts", {})
 
     m = api.get_monitor()
     gpu_ok = m.get("gpu_available", False)
@@ -306,36 +348,51 @@ def _build_monitor_html() -> str:
             f"</div>"
         )
 
-    semaphore = (
-        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
-        f'<div style="width:10px;height:10px;border-radius:50%;background:{sem_color};{pulse}"></div>'
-        f'<span style="font-size:13px;font-weight:600;color:#c8d6d8">{device.upper()}</span>'
+    semaphores = (
+        f'<div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">'
+        f"{_service_semaphore('STT', stt_info)}"
+        f"{_service_semaphore('TTS', tts_info)}"
         f"</div>"
     )
-    return semaphore + "\n".join(rows)
+    return semaphores + "\n".join(rows)
 
 
 ##### MONITOR — CALLBACKS #####
 
 
-def _toggle_device() -> tuple[str, str]:
-    """Toggle GPU↔CPU. Returns updated monitor + new button label."""
+def _toggle_stt_device() -> tuple[str, str, str]:
+    """Toggle STT GPU↔CPU. Returns monitor HTML + STT button label + TTS button label."""
     device_info = _api().get_device()
-    current = device_info.get("device", "gpu")
+    current = device_info.get("stt", {}).get("device", "gpu")
     target = "cpu" if current == "gpu" else "gpu"
-    _api().switch_device(target)
+    _api().switch_device(target, service="stt")
     html = _build_monitor_html()
     new_info = _api().get_device()
-    new_target = "cpu" if new_info.get("device") == "gpu" else "gpu"
-    return html, f"→ {new_target.upper()}"
+    stt_target = "cpu" if new_info.get("stt", {}).get("device") == "gpu" else "gpu"
+    tts_target = "cpu" if new_info.get("tts", {}).get("device") == "gpu" else "gpu"
+    return html, f"STT → {stt_target.upper()}", f"TTS → {tts_target.upper()}"
 
 
-def _refresh_monitor() -> tuple[str, str]:
-    """Timer tick — refresh monitor HTML + button label."""
+def _toggle_tts_device() -> tuple[str, str, str]:
+    """Toggle TTS GPU↔CPU. Returns monitor HTML + STT button label + TTS button label."""
+    device_info = _api().get_device()
+    current = device_info.get("tts", {}).get("device", "gpu")
+    target = "cpu" if current == "gpu" else "gpu"
+    _api().switch_device(target, service="tts")
+    html = _build_monitor_html()
+    new_info = _api().get_device()
+    stt_target = "cpu" if new_info.get("stt", {}).get("device") == "gpu" else "gpu"
+    tts_target = "cpu" if new_info.get("tts", {}).get("device") == "gpu" else "gpu"
+    return html, f"STT → {stt_target.upper()}", f"TTS → {tts_target.upper()}"
+
+
+def _refresh_monitor() -> tuple[str, str, str]:
+    """Timer tick — refresh monitor HTML + both button labels."""
     html = _build_monitor_html()
     device_info = _api().get_device()
-    target = "cpu" if device_info.get("device") == "gpu" else "gpu"
-    return html, f"→ {target.upper()}"
+    stt_target = "cpu" if device_info.get("stt", {}).get("device") == "gpu" else "gpu"
+    tts_target = "cpu" if device_info.get("tts", {}).get("device") == "gpu" else "gpu"
+    return html, f"STT → {stt_target.upper()}", f"TTS → {tts_target.upper()}"
 
 
 ##### LOGO #####
@@ -360,27 +417,36 @@ def create_app() -> gr.Blocks:
     """Build the Gradio Blocks UI."""
     api = _api()
     device_info = api.get_device()
-    init_target = "cpu" if device_info.get("device") == "gpu" else "gpu"
+    stt_target = "cpu" if device_info.get("stt", {}).get("device") == "gpu" else "gpu"
+    tts_target = "cpu" if device_info.get("tts", {}).get("device") == "gpu" else "gpu"
 
     with gr.Blocks(title="e-voice") as app:
         ##### HEADER — logo left, monitor right #####
         with gr.Row(elem_id="header-row"):
             with gr.Column(scale=1):
                 gr.HTML(_load_logo_html())
-            with gr.Column(min_width=360, scale=0), gr.Group(elem_id="monitor-card"), gr.Row():
+            with gr.Column(min_width=400, scale=0), gr.Group(elem_id="monitor-card"), gr.Row():
                 monitor_html = gr.HTML(value=_build_monitor_html)
-                with gr.Column(min_width=70, scale=0):
-                    switch_btn = gr.Button(
-                        f"→ {init_target.upper()}",
+                with gr.Column(min_width=100, scale=0):
+                    stt_switch_btn = gr.Button(
+                        f"STT → {stt_target.upper()}",
                         size="sm",
                         variant="secondary",
-                        elem_id="device-switch-btn",
+                        elem_id="stt-switch-btn",
+                    )
+                    tts_switch_btn = gr.Button(
+                        f"TTS → {tts_target.upper()}",
+                        size="sm",
+                        variant="secondary",
+                        elem_id="tts-switch-btn",
                     )
 
-        switch_btn.click(fn=_toggle_device, outputs=[monitor_html, switch_btn])
+        all_outputs = [monitor_html, stt_switch_btn, tts_switch_btn]
+        stt_switch_btn.click(fn=_toggle_stt_device, outputs=all_outputs)
+        tts_switch_btn.click(fn=_toggle_tts_device, outputs=all_outputs)
 
         mon_timer = gr.Timer(value=3)
-        mon_timer.tick(fn=_refresh_monitor, outputs=[monitor_html, switch_btn])
+        mon_timer.tick(fn=_refresh_monitor, outputs=all_outputs)
 
         ##### TABS #####
         with gr.Tabs():
@@ -457,30 +523,49 @@ def create_app() -> gr.Blocks:
 
                 tts_btn.click(fn=_synthesize, inputs=[tts_text, tts_voice, tts_speed], outputs=tts_output)
 
-            ##### VOICES TAB #####
-            with gr.Tab("Voices"):
-                voices_display = gr.Markdown(value=_format_voices_display)
-                voices_refresh_btn = gr.Button("Refresh", variant="secondary")
-                voices_refresh_btn.click(fn=_format_voices_display, outputs=voices_display)
+            ##### BACKEND TAB #####
+            with gr.Tab("Backend"):
+                with gr.Accordion("Speech-to-Text (STT)", open=True):
+                    stt_backend_md = gr.Markdown(value=_build_stt_backend_md)
+                    stt_refresh_btn = gr.Button("Refresh", variant="secondary", size="sm")
+                    stt_refresh_btn.click(fn=_build_stt_backend_md, outputs=stt_backend_md)
 
-            ##### MODELS TAB #####
-            with gr.Tab("Models"):
-                models_display = gr.Markdown(value=_refresh_models, label="Downloaded models")
-                refresh_btn = gr.Button("Refresh", variant="secondary")
-                refresh_btn.click(fn=_refresh_models, outputs=models_display)
+                    gr.Markdown("---")
+                    with gr.Row():
+                        stt_dl_model_id = gr.Textbox(
+                            label="Model ID",
+                            placeholder="mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+                            scale=3,
+                        )
+                        stt_dl_btn = gr.Button("Download", variant="primary", scale=1)
+                    stt_dl_result = gr.Textbox(label="Result", interactive=False)
 
-                gr.Markdown("---\n### Download Model")
-                with gr.Row():
-                    dl_model_id = gr.Textbox(
-                        label="Model ID", placeholder="mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+                    stt_dl_btn.click(
+                        fn=_download_stt_model,
+                        inputs=[stt_dl_model_id],
+                        outputs=[stt_dl_result, stt_backend_md],
                     )
-                    dl_service = gr.Dropdown(choices=["stt", "tts"], value="stt", label="Service")
-                dl_btn = gr.Button("Download", variant="primary")
-                dl_result = gr.Textbox(label="Result", interactive=False)
 
-                dl_btn.click(fn=_download_model, inputs=[dl_model_id, dl_service], outputs=dl_result).then(
-                    fn=_refresh_models, outputs=models_display
-                )
+                with gr.Accordion("Text-to-Speech (TTS)", open=True):
+                    tts_backend_md = gr.Markdown(value=_build_tts_backend_md)
+                    tts_refresh_btn = gr.Button("Refresh", variant="secondary", size="sm")
+                    tts_refresh_btn.click(fn=_build_tts_backend_md, outputs=tts_backend_md)
+
+                    gr.Markdown("---")
+                    with gr.Row():
+                        tts_dl_model_id = gr.Textbox(
+                            label="Model ID",
+                            placeholder="kokoro",
+                            scale=3,
+                        )
+                        tts_dl_btn = gr.Button("Download", variant="primary", scale=1)
+                    tts_dl_result = gr.Textbox(label="Result", interactive=False)
+
+                    tts_dl_btn.click(
+                        fn=_download_tts_model,
+                        inputs=[tts_dl_model_id],
+                        outputs=[tts_dl_result, tts_backend_md],
+                    )
 
     return app
 

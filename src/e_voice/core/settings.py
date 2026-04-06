@@ -118,8 +118,9 @@ class SystemConfig(BaseModel):
 
 
 class STTConfig(BaseModel):
-    """Speech-to-Text (faster-whisper) settings."""
+    """Speech-to-Text settings."""
 
+    backend: str = "whisper"
     model: str = "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
     device: DeviceType = DeviceType.GPU
     device_index: int = Field(default=0, ge=0)
@@ -136,8 +137,9 @@ class STTConfig(BaseModel):
 
 
 class TTSConfig(BaseModel):
-    """Text-to-Speech (Kokoro-ONNX) settings."""
+    """Text-to-Speech settings."""
 
+    backend: str = "kokoro"
     device: DeviceType = DeviceType.GPU
     sample_rate: int = Field(default=24_000, ge=8000, le=48000)
     default_voice: str = "af_heart"

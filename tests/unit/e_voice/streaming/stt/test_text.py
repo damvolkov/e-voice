@@ -1,6 +1,6 @@
 import pytest
 
-from e_voice.streaming.text import (
+from e_voice.streaming.stt.text import (
     StreamingWord,
     WordBuffer,
     canonicalize_word,
