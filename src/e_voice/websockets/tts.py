@@ -16,6 +16,15 @@ router = WebSocketRouter()
 @router("/v1/audio/speech", "/v1/tts/ws", params=TTSParams)
 async def handle_tts(conn: Connection[TTSParams]) -> None:
     """Receive JSON request, stream back base64 PCM16 audio chunks."""
+    await conn.state.tts_connections.add(conn.id)
+    try:
+        await _handle_tts_messages(conn)
+    finally:
+        await conn.state.tts_connections.remove(conn.id)
+
+
+async def _handle_tts_messages(conn: Connection[TTSParams]) -> None:
+    """Process TTS messages for a connection."""
     async for msg in conn:
         if not isinstance(msg, str) or not msg.strip():
             continue

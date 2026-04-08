@@ -46,6 +46,7 @@ async def handle_stt(conn: Connection[STTParams]) -> None:
         segmentation=conn.params.segmentation,
     )
     conn.state.stt_sessions[conn.id] = session
+    await conn.state.stt_connections.add(conn.id)
     logger.info(
         "stt stream started",
         step="WS",
@@ -101,6 +102,7 @@ async def handle_stt(conn: Connection[STTParams]) -> None:
         logger.error("streaming transcription failed", step="WS", error=str(exc))
         await conn.send(orjson.dumps({"error": str(exc)}).decode())
     finally:
+        await conn.state.stt_connections.remove(conn.id)
         if (session := conn.state.stt_sessions.pop(conn.id, None)) is not None:
             event = flush_session(session)
             if event.new_confirmed:

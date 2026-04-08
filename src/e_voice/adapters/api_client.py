@@ -168,6 +168,35 @@ class APIClient:
                 "tts": {"active": "unknown", "available": []},
             }
 
+    def switch_backend(self, service: str, backend: str) -> dict:
+        """Hot-swap a service backend. Returns result dict."""
+        try:
+            with self._http() as c:
+                resp = c.post(
+                    "/v1/system/backend",
+                    json={"service": service, "backend": backend},
+                    timeout=300.0,
+                )
+                return resp.json()
+        except Exception as exc:
+            return {"success": False, "service": service, "message": str(exc)}
+
+    def clone_voice(self, voice_id: str, ref_audio_b64: str, ref_text: str, language: str | None = None) -> dict:
+        """Clone a voice from reference audio. Returns result dict."""
+        try:
+            with self._http() as c:
+                body: dict = {"voice_id": voice_id, "ref_audio": ref_audio_b64, "ref_text": ref_text}
+                if language:
+                    body["language"] = language
+                resp = c.post("/v1/audio/voices/clone", json=body, timeout=120.0)
+                data = resp.json()
+                if not resp.is_success:
+                    msg = data.get("error", {})
+                    return {"error": msg.get("message", str(msg)) if isinstance(msg, dict) else str(msg)}
+                return data
+        except Exception as exc:
+            return {"error": str(exc)}
+
     ##### MODELS #####
 
     def get_models(self) -> list[str]:

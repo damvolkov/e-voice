@@ -93,19 +93,21 @@ def _scan_stt_models() -> list[ModelEntry]:
 
 
 def _scan_tts_models() -> list[ModelEntry]:
-    """Scan TTS backend model directory for downloaded models."""
-    tts_dir = st.MODELS_PATH / "tts" / st.tts.backend
-    if not tts_dir.exists():
+    """Scan TTS backend models/ directory for downloaded models."""
+    models_dir = st.MODELS_PATH / "tts" / st.tts.backend / "models"
+    if not models_dir.exists():
         return []
-    has_models = any(tts_dir.glob("*.onnx")) or any(tts_dir.glob("*.bin")) or any(tts_dir.glob("*.pt"))
+    has_models = (
+        any(models_dir.rglob("*.onnx")) or any(models_dir.rglob("*.bin")) or any(models_dir.rglob("*.safetensors"))
+    )
     if not has_models:
         return []
     return [
         ModelEntry(
             id=st.tts.backend,
             service="tts",
-            path=str(tts_dir),
-            size_mb=round(_dir_size_mb(tts_dir), 1),
+            path=str(models_dir),
+            size_mb=round(_dir_size_mb(models_dir), 1),
         )
     ]
 
@@ -277,3 +279,91 @@ async def switch_device(request: Request, global_dependencies) -> Response:
             }
         ).decode(),
     )
+
+
+##### BACKEND SWITCH #####
+
+
+@router.post("/system/backend")
+async def switch_backend(request: Request, global_dependencies) -> Response:
+    """Hot-swap a service backend. Drains connections, shuts down old, loads new."""
+    body = orjson.loads(request.body)
+    service_str = body.get("service", "").lower()
+    backend_str = body.get("backend", "").strip()
+
+    if service_str not in ("stt", "tts"):
+        return error_response(request.url.path, 400, f"Invalid service: '{service_str}'. Use 'stt' or 'tts'.")
+
+    if not backend_str:
+        return error_response(request.url.path, 400, "Missing 'backend' field.")
+
+    service = ServiceType.STT if service_str == "stt" else ServiceType.TTS
+    ctrl: DeviceController = global_dependencies.get("state").device_controller
+    state = global_dependencies.get("state")
+
+    result = await ctrl.switch_backend(service, backend_str, state)
+
+    status = status_codes.HTTP_200_OK if result.success else status_codes.HTTP_409_CONFLICT
+    return Response(
+        status_code=status,
+        headers={"content-type": "application/json"},
+        description=orjson.dumps(
+            {
+                "success": result.success,
+                "service": result.service.value,
+                "device": result.device.value,
+                "message": result.message,
+            }
+        ).decode(),
+    )
+
+
+##### VOICE CLONE #####
+
+
+@router.post("/audio/voices/clone")
+async def clone_voice(request: Request, global_dependencies) -> Response:
+    """Clone a voice from reference audio (backend must support it)."""
+    import tempfile
+
+    body = orjson.loads(request.body)
+    voice_id = body.get("voice_id", "").strip()
+    ref_text = body.get("ref_text", "").strip()
+    ref_audio_b64 = body.get("ref_audio", "")
+    language = body.get("language")
+
+    if not voice_id:
+        return error_response(request.url.path, 400, "Missing 'voice_id'.")
+    if not ref_text:
+        return error_response(request.url.path, 400, "Missing 'ref_text'.")
+    if not ref_audio_b64:
+        return error_response(request.url.path, 400, "Missing 'ref_audio' (base64-encoded audio).")
+
+    tts: TTSBackend = global_dependencies.get("state").tts
+
+    if not tts.supports_voice_clone:
+        return error_response(request.url.path, 501, "Current TTS backend does not support voice cloning.")
+
+    try:
+        import base64
+        from pathlib import Path
+
+        audio_bytes = base64.b64decode(ref_audio_b64)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = Path(tmp.name)
+
+        cloned_id = await tts.clone_voice(voice_id, tmp_path, ref_text, language=language)
+        tmp_path.unlink(missing_ok=True)
+
+        return Response(
+            status_code=status_codes.HTTP_201_CREATED,
+            headers={"content-type": "application/json"},
+            description=orjson.dumps({"voice_id": cloned_id, "status": "cloned", "backend": st.tts.backend}).decode(),
+        )
+
+    except BackendCapabilityError as exc:
+        return error_response(request.url.path, 501, str(exc))
+    except Exception as exc:
+        logger.error("voice clone failed", step="CLONE", error=str(exc))
+        return error_response(request.url.path, 500, f"Voice clone failed: {exc}")

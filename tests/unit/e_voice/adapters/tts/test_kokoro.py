@@ -263,10 +263,15 @@ async def test_download_fetches_files(tmp_path, mocker) -> None:
 
 async def test_download_returns_model_dir(tmp_path, mocker) -> None:
     mocker.patch("e_voice.core.settings.Settings.MODELS_PATH", tmp_path, create=True)
+    original_backend = st.tts.backend
+    st.tts.backend = "kokoro"
     mock_download = mocker.patch.object(KokoroAdapter, "_ka_download_files", new_callable=mocker.AsyncMock)
 
-    adapter = KokoroAdapter()
-    result = await adapter.download()
+    try:
+        adapter = KokoroAdapter()
+        result = await adapter.download()
 
-    mock_download.assert_awaited_once()
-    assert result == tmp_path / "tts" / st.tts.backend
+        mock_download.assert_awaited_once()
+        assert result == tmp_path / "tts" / "kokoro" / "models"
+    finally:
+        st.tts.backend = original_backend

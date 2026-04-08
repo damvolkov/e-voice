@@ -14,7 +14,6 @@ from e_voice.models.tts import (
     StreamFormat,
     SynthesisParams,
     VoiceObject,
-    resolve_voice_lang,
 )
 
 router = Router(__file__, prefix="/v1")
@@ -77,13 +76,9 @@ async def list_voices(request: Request, global_dependencies):
     lang_filter = request.query_params.get("lang", None)
 
     voices: list[VoiceObject] = []
-    for vid in sorted(tts.voices):
-        try:
-            voice_lang = resolve_voice_lang(vid)
-        except ValueError:
+    for entry in tts.voice_entries:
+        if lang_filter and entry.language != lang_filter:
             continue
-        if lang_filter and voice_lang != lang_filter:
-            continue
-        voices.append(VoiceObject(id=vid, name=vid, language=voice_lang))
+        voices.append(VoiceObject(id=entry.id, name=entry.id, language=entry.language))
 
     return ListVoicesResponse(voices=voices)

@@ -17,6 +17,7 @@ from e_voice.front import launch_background as launch_gradio
 from e_voice.middlewares.base import MiddlewareHandler
 from e_voice.middlewares.files import FileUploadOpenAPIMiddleware
 from e_voice.middlewares.swagger import SwaggerBrandingMiddleware
+from e_voice.models.session import ConnectionRegistry
 from e_voice.operational.controller import DeviceController
 from e_voice.websockets.stt import router as ws_stt_router
 from e_voice.websockets.tts import router as ws_tts_router
@@ -38,6 +39,8 @@ async def startup() -> None:
     """Startup: lifespan first, then WS server, then Gradio UI."""
     await lifespan.startup()
     assert lifespan.state is not None
+    lifespan.state.stt_connections = ConnectionRegistry()
+    lifespan.state.tts_connections = ConnectionRegistry()
     lifespan.state.stt_sessions = {}
     lifespan.state.device_controller = DeviceController()
     ws_server.launch_background(state=lifespan.state)

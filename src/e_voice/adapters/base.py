@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 from e_voice.core.settings import DeviceType
 from e_voice.models.error import BackendCapabilityError
 from e_voice.models.stt import InferenceParams, ModelSpec, Span, Transcript
-from e_voice.models.tts import AudioChunk, SynthesisParams, TTSModelSpec
+from e_voice.models.tts import AudioChunk, SynthesisParams, TTSModelSpec, VoiceEntry
 
 ##### STT BACKEND #####
 
@@ -133,11 +133,30 @@ class TTSBackend(ABC):
     @abstractmethod
     def voices(self) -> list[str]: ...
 
+    @property
+    @abstractmethod
+    def voice_entries(self) -> list[VoiceEntry]: ...
+
     # ── Capabilities (concrete default → BackendCapabilityError) ──
 
     @property
     def supported_devices(self) -> frozenset[DeviceType]:
         return frozenset()
 
+    @property
+    def supports_voice_clone(self) -> bool:
+        return False
+
     async def download(self, model_id: str) -> Path:
         raise BackendCapabilityError(f"{type(self).__name__} does not support local download")
+
+    async def clone_voice(
+        self,
+        voice_id: str,
+        ref_audio: Path,
+        ref_text: str,
+        *,
+        language: str | None = None,
+    ) -> str:
+        """Clone a voice from reference audio. Returns the voice_id for synthesis."""
+        raise BackendCapabilityError(f"{type(self).__name__} does not support voice cloning")

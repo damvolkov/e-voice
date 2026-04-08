@@ -144,10 +144,17 @@ class TTSConfig(BaseModel):
     sample_rate: int = Field(default=24_000, ge=8000, le=48000)
     default_voice: str = "af_heart"
     default_speed: float = Field(default=1.0, ge=0.1, le=5.0)
+    # Kokoro-specific
     model_filename: str = "kokoro-v1.0.onnx"
     voices_filename: str = "voices-v1.0.bin"
     release_url: str = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
     download_chunk_size: int = Field(default=65_536, ge=4096)
+    # Qwen-specific
+    qwen_model: str = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+    qwen_dtype: str = "bfloat16"
+    qwen_attn: str = "sdpa"
+    qwen_max_new_tokens: int = Field(default=2048, ge=128, le=8192)
+    qwen_chunk_size: int = Field(default=8, ge=1, le=32)
 
 
 class VADConfig(BaseModel):

@@ -17,9 +17,17 @@ wheels/
 # IDE
 .idea/
 
-# Data — models and runtime files ignored, config tracked
+# Data — models and runtime files ignored, config and voice assets tracked
 data/*
 !data/config/
+!data/models/
+data/models/*
+!data/models/tts/
+data/models/tts/*
+!data/models/tts/qwen/
+data/models/tts/qwen/*
+!data/models/tts/qwen/voices/
+!data/models/tts/qwen/reference_samples/
 
 # Notebooks
 notebook/

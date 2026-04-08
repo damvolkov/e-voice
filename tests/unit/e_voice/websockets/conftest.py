@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from e_voice.core.websocket import BaseWSParams
+from e_voice.models.session import ConnectionRegistry
 
 
 @dataclass
@@ -35,6 +36,8 @@ class MockState:
     """Mock lifespan state."""
 
     stt_sessions: dict = field(default_factory=dict)
+    stt_connections: ConnectionRegistry = field(default_factory=ConnectionRegistry)
+    tts_connections: ConnectionRegistry = field(default_factory=ConnectionRegistry)
     stt: object = None
     tts: object = None
 
