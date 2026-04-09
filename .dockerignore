@@ -7,4 +7,6 @@
 !README.md
 !docker/
 !data/config/config.yaml
+!data/models/tts/qwen/voices/
+!data/models/tts/qwen/reference_samples/
 !assets/

@@ -56,13 +56,18 @@ class TTSAdapterEvent(BaseEvent[TTSBackend]):
         """Create TTS adapter from registry and load default model."""
         backend_name = st.tts.backend
         if backend_name not in TTS_BACKENDS:
-            raise RuntimeError(f"Unknown TTS backend: '{backend_name}'. Available: {sorted(TTS_BACKENDS)}")
+            available = sorted(TTS_BACKENDS)
+            hint = ""
+            if backend_name == "qwen" and "qwen" not in TTS_BACKENDS:
+                hint = " Install deps with: uv add --group qwen qwen-tts faster-qwen3-tts torch torchaudio"
+            raise RuntimeError(f"Unknown TTS backend: '{backend_name}'. Available: {available}.{hint}")
 
         adapter_cls = TTS_BACKENDS[backend_name]
         logger.info("creating TTS backend", step="START", backend=backend_name)
 
-        adapter = adapter_cls()
-        await adapter.load(TTSModelSpec(device=st.tts.device))
+        (st.MODELS_PATH / "tts" / backend_name).mkdir(parents=True, exist_ok=True)
+        adapter = adapter_cls()  # ty: ignore[too-many-positional-arguments]
+        await adapter.load(TTSModelSpec(model_id=backend_name, device=st.tts.device))
         return adapter
 
     async def shutdown(self, instance: TTSBackend) -> None:

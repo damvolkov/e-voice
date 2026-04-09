@@ -1,4 +1,9 @@
-"""Backend registry — maps config backend names to adapter classes."""
+"""Backend registry — maps config backend names to adapter classes.
+
+Qwen backend uses lazy import to avoid hard dependency on torch/qwen-tts.
+If deps are missing, the adapter class raises ImportError at registration time
+with a clear install instruction.
+"""
 
 from e_voice.adapters.base import STTBackend, TTSBackend
 from e_voice.adapters.stt.whisper import WhisperAdapter
@@ -12,6 +17,19 @@ STT_BACKENDS: dict[str, type[STTBackend]] = {
 TTS_BACKENDS: dict[str, type[TTSBackend]] = {
     "kokoro": KokoroAdapter,
 }
+
+
+def _register_qwen() -> None:
+    """Lazy-register Qwen backend. No-op if deps are not installed."""
+    try:
+        from e_voice.adapters.tts.qwen import QwenAdapter
+
+        TTS_BACKENDS["qwen"] = QwenAdapter
+    except ImportError:
+        pass
+
+
+_register_qwen()
 
 
 def available_backends() -> dict[str, dict[str, str | list[str]]]:

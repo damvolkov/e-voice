@@ -228,7 +228,7 @@ async def test_persist_config_writes_yaml(controller: DeviceController, tmp_path
     config_file = tmp_path / "config.yaml"
     config_file.write_text("stt:\n  device: gpu\ntts:\n  device: gpu\n")
 
-    await controller._dc_persist_config(ServiceType.STT, DeviceType.CPU, config_dir=tmp_path)
+    await controller._dc_persist_config(ServiceType.STT, device=DeviceType.CPU, config_dir=tmp_path)
 
     data = yaml.safe_load(config_file.read_text())
     assert data["stt"]["device"] == "cpu"
@@ -236,7 +236,7 @@ async def test_persist_config_writes_yaml(controller: DeviceController, tmp_path
 
 
 async def test_persist_config_noop_when_missing(controller: DeviceController, tmp_path: Path) -> None:
-    await controller._dc_persist_config(ServiceType.STT, DeviceType.CPU, config_dir=tmp_path / "nonexistent")
+    await controller._dc_persist_config(ServiceType.STT, device=DeviceType.CPU, config_dir=tmp_path / "nonexistent")
 
 
 async def test_persist_config_preserves_other_fields(controller: DeviceController, tmp_path: Path) -> None:
@@ -247,7 +247,7 @@ async def test_persist_config_preserves_other_fields(controller: DeviceControlle
         "tts:\n  device: gpu\n  default_voice: af_heart\n"
     )
 
-    await controller._dc_persist_config(ServiceType.STT, DeviceType.CPU, config_dir=tmp_path)
+    await controller._dc_persist_config(ServiceType.STT, device=DeviceType.CPU, config_dir=tmp_path)
 
     data = yaml.safe_load(config_file.read_text())
     assert data["stt"]["device"] == "cpu"
@@ -262,10 +262,115 @@ async def test_persist_config_readonly_graceful(controller: DeviceController, tm
     config_file.write_text("stt:\n  device: gpu\n")
     config_file.chmod(0o444)
 
-    await controller._dc_persist_config(ServiceType.STT, DeviceType.CPU, config_dir=tmp_path)
+    await controller._dc_persist_config(ServiceType.STT, device=DeviceType.CPU, config_dir=tmp_path)
 
     data = yaml.safe_load(config_file.read_text())
     assert data["stt"]["device"] == "gpu"
+
+
+##### SWITCH BACKEND #####
+
+
+async def test_switch_backend_same_backend_noop(controller: DeviceController) -> None:
+    from e_voice.core.lifespan import State
+
+    state = State()
+    state.tts = AsyncMock()
+    original = st.tts.backend
+    result = await controller.switch_backend(ServiceType.TTS, original, state)
+    assert result.success is True
+    assert "already using" in result.message
+
+
+async def test_switch_backend_unknown_backend(controller: DeviceController) -> None:
+    from e_voice.core.lifespan import State
+
+    state = State()
+    result = await controller.switch_backend(ServiceType.TTS, "nonexistent", state)
+    assert result.success is False
+    assert "Unknown backend" in result.message
+
+
+async def test_switch_backend_success(controller: DeviceController, mocker: MockerFixture) -> None:
+    from e_voice.core.lifespan import State
+    from e_voice.models.session import ConnectionRegistry
+
+    mock_old_adapter = AsyncMock()
+    mock_old_adapter.loaded_models = lambda: []
+
+    mock_new_adapter = AsyncMock()
+    mock_new_adapter.supported_devices = frozenset({DeviceType.CPU, DeviceType.GPU})
+    mock_new_adapter.load = AsyncMock()
+
+    state = State()
+    state.tts = mock_old_adapter
+    state.tts_connections = ConnectionRegistry()
+
+    original_backend = st.tts.backend
+    mocker.patch.dict(
+        "e_voice.operational.controller.TTS_BACKENDS",
+        {"test_backend": lambda: mock_new_adapter},
+    )
+    mocker.patch.object(DeviceController, "_dc_persist_config", new_callable=AsyncMock)
+
+    try:
+        result = await controller.switch_backend(ServiceType.TTS, "test_backend", state)
+        assert result.success is True
+        assert "test_backend" in result.message
+        assert state.tts is mock_new_adapter
+        mock_new_adapter.load.assert_called_once()
+    finally:
+        st.tts.backend = original_backend
+
+
+async def test_switch_backend_adjusts_device_if_unsupported(
+    controller: DeviceController, mocker: MockerFixture
+) -> None:
+    from e_voice.core.lifespan import State
+    from e_voice.models.session import ConnectionRegistry
+
+    mock_old = AsyncMock()
+    mock_old.loaded_models = lambda: []
+
+    mock_new = AsyncMock()
+    mock_new.supported_devices = frozenset({DeviceType.GPU})
+    mock_new.load = AsyncMock()
+
+    state = State()
+    state.tts = mock_old
+    state.tts_connections = ConnectionRegistry()
+
+    original_backend = st.tts.backend
+    original_device = st.tts.device
+    st.tts.device = DeviceType.CPU
+
+    mocker.patch.dict(
+        "e_voice.operational.controller.TTS_BACKENDS",
+        {"gpu_only": lambda: mock_new},
+    )
+    mocker.patch.object(DeviceController, "_dc_persist_config", new_callable=AsyncMock)
+
+    try:
+        result = await controller.switch_backend(ServiceType.TTS, "gpu_only", state)
+        assert result.success is True
+        assert result.device == DeviceType.GPU
+    finally:
+        st.tts.backend = original_backend
+        st.tts.device = original_device
+
+
+##### PERSIST CONFIG — BACKEND #####
+
+
+async def test_persist_config_writes_backend(controller: DeviceController, tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("tts:\n  backend: kokoro\n  device: gpu\n")
+
+    await controller._dc_persist_config(ServiceType.TTS, backend="qwen", config_dir=tmp_path)
+
+    data = yaml.safe_load(config_file.read_text())
+    assert data["tts"]["backend"] == "qwen"
+    assert data["tts"]["device"] == "gpu"
 
 
 ##### SWITCH RESULT DATACLASS #####

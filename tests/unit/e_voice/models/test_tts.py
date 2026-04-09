@@ -47,28 +47,23 @@ async def test_speech_request_explicit_lang_matching_voice() -> None:
     assert req.lang == "es"
 
 
-##### SPEECH REQUEST — LANG CONFLICT #####
+##### SPEECH REQUEST — BACKEND-AGNOSTIC VOICE/LANG #####
 
 
-async def test_speech_request_lang_conflicts_with_voice() -> None:
-    with pytest.raises(ValidationError, match="conflicts with voice"):
-        SpeechRequest(input="test", voice="af_heart", lang="es")
+async def test_speech_request_explicit_lang_overrides() -> None:
+    req = SpeechRequest(input="test", voice="af_heart", lang="es")
+    assert req.lang == "es"
 
 
-##### SPEECH REQUEST — INVALID LANG #####
+async def test_speech_request_unknown_voice_keeps_default_lang() -> None:
+    req = SpeechRequest(input="test", voice="serena")
+    assert req.lang == "en-us"
 
 
-async def test_speech_request_invalid_lang_code() -> None:
-    with pytest.raises(ValidationError, match="Unsupported language"):
-        SpeechRequest(input="test", voice="af_heart", lang="xyz")
-
-
-##### SPEECH REQUEST — INVALID VOICE PREFIX #####
-
-
-async def test_speech_request_invalid_voice_prefix() -> None:
-    with pytest.raises(ValidationError, match="Unknown voice prefix"):
-        SpeechRequest(input="test", voice="xf_unknown")
+async def test_speech_request_accepts_any_voice_id() -> None:
+    req = SpeechRequest(input="test", voice="tatan", lang="es")
+    assert req.voice == "tatan"
+    assert req.lang == "es"
 
 
 ##### SPEECH REQUEST — INPUT VALIDATION #####

@@ -58,6 +58,13 @@ e-voice = "e_voice.main:main"
 [project.urls]
 
 [dependency-groups]
+qwen = [
+    "qwen-tts>=0.1.0",
+    "faster-qwen3-tts>=0.1.0",
+    "torch>=2.5.1",
+    "torchaudio>=2.5.1",
+    "soundfile>=0.12.1",
+]
 dev = [
     "pytest>=8.4.0",
     "pytest-asyncio>=1.0.0",

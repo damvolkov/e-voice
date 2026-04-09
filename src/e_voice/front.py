@@ -154,15 +154,21 @@ def _synthesize(text: str, voice: str, speed: float) -> str | None:
 ##### VOICE HELPERS #####
 
 _LANG_LABELS: dict[str, str] = {
+    "en": "🇺🇸 English",
     "en-us": "🇺🇸 English (US)",
     "en-gb": "🇬🇧 English (UK)",
     "es": "🇪🇸 Spanish",
     "fr": "🇫🇷 French",
+    "de": "🇩🇪 German",
     "hi": "🇮🇳 Hindi",
     "it": "🇮🇹 Italian",
     "ja": "🇯🇵 Japanese",
+    "ko": "🇰🇷 Korean",
     "pt-br": "🇧🇷 Portuguese (BR)",
+    "ru": "🇷🇺 Russian",
     "zh": "🇨🇳 Chinese",
+    "multilingual": "🌐 Multilingual",
+    "unknown": "🔹 Other",
 }
 
 
@@ -170,7 +176,7 @@ def _fetch_voice_choices() -> list[tuple[str, str]]:
     """Fetch voices grouped by language. Returns (label, value) tuples for Dropdown."""
     voices = _api().get_voices()
     if not voices:
-        return [("af_heart", "af_heart")]
+        return []
 
     grouped: dict[str, list[str]] = {}
     for v in sorted(voices, key=lambda v: (v.get("language", ""), v["id"])):
@@ -179,8 +185,9 @@ def _fetch_voice_choices() -> list[tuple[str, str]]:
     choices: list[tuple[str, str]] = []
     for lang in sorted(grouped):
         label = _LANG_LABELS.get(lang, lang)
-        first = grouped[lang][0]
-        choices.append((f"── {label} ──", first))
+        if len(grouped) > 1:
+            first = grouped[lang][0]
+            choices.append((f"── {label} ──", first))
         choices.extend((vid, vid) for vid in grouped[lang])
     return choices
 
@@ -205,6 +212,14 @@ def _build_stt_backend_md() -> str:
     else:
         lines.append("- (none)")
     return "\n".join(lines)
+
+
+def _switch_stt_backend(backend: str) -> tuple[str, str, str]:
+    """Switch STT backend, return (result_msg, refreshed_md, new_dropdown_value)."""
+    result = _api().switch_backend("stt", backend)
+    msg = result.get("message", "Unknown error")
+    active = _api().get_backends().get("stt", {}).get("active", backend)
+    return msg, _build_stt_backend_md(), active
 
 
 def _download_stt_model(model_id: str) -> tuple[str, str]:
@@ -249,10 +264,42 @@ def _build_tts_backend_md() -> str:
     return "\n".join(lines)
 
 
+def _switch_tts_backend(backend: str) -> tuple[str, str, str, dict]:
+    """Switch TTS backend, return (result_msg, refreshed_md, new_dropdown_value, voice_dropdown_update)."""
+    result = _api().switch_backend("tts", backend)
+    msg = result.get("message", "Unknown error")
+    active = _api().get_backends().get("tts", {}).get("active", backend)
+    voice_choices = _fetch_voice_choices()
+    voice_values = [v for _, v in voice_choices]
+    default = voice_values[0] if voice_values else ""
+    return msg, _build_tts_backend_md(), active, gr.update(choices=voice_choices, value=default)
+
+
 def _download_tts_model(model_id: str) -> tuple[str, str]:
     """Download TTS model, return (result_text, refreshed_md)."""
     result = _api().download_model(model_id, "tts")
     return result, _build_tts_backend_md()
+
+
+def _clone_voice(voice_id: str, ref_audio_path: str, ref_text: str, language: str) -> tuple[str, str, dict]:
+    """Clone a voice, return (result_msg, refreshed_md, voice_dropdown_update)."""
+    if not voice_id.strip() or not ref_audio_path or not ref_text.strip():
+        return "All fields required: voice ID, audio file, and reference text.", _build_tts_backend_md(), gr.update()
+
+    import base64
+
+    audio_bytes = Path(ref_audio_path).read_bytes()
+    ref_audio_b64 = base64.b64encode(audio_bytes).decode()
+    result = _api().clone_voice(voice_id, ref_audio_b64, ref_text, language=language or None)
+
+    voice_choices = _fetch_voice_choices()
+    voice_values = [v for _, v in voice_choices]
+    cloned_id = result.get("voice_id", voice_id)
+    default = cloned_id if cloned_id in voice_values else (voice_values[0] if voice_values else "")
+
+    if "error" in result:
+        return f"Error: {result['error']}", _build_tts_backend_md(), gr.update()
+    return f"Voice '{cloned_id}' cloned.", _build_tts_backend_md(), gr.update(choices=voice_choices, value=default)
 
 
 ##### MONITOR — SVG SPARKLINES #####
@@ -525,20 +572,36 @@ def create_app() -> gr.Blocks:
 
             ##### BACKEND TAB #####
             with gr.Tab("Backend"):
+                backends = api.get_backends()
+
                 with gr.Accordion("Speech-to-Text (STT)", open=True):
                     stt_backend_md = gr.Markdown(value=_build_stt_backend_md)
-                    stt_refresh_btn = gr.Button("Refresh", variant="secondary", size="sm")
-                    stt_refresh_btn.click(fn=_build_stt_backend_md, outputs=stt_backend_md)
+
+                    with gr.Row():
+                        stt_be_dropdown = gr.Dropdown(
+                            choices=backends.get("stt", {}).get("available", []),
+                            value=backends.get("stt", {}).get("active", "whisper"),
+                            label="Backend",
+                            scale=2,
+                        )
+                        stt_be_switch_btn = gr.Button("Switch", variant="primary", scale=1)
+                    stt_be_result = gr.Textbox(label="Result", interactive=False)
+
+                    stt_be_switch_btn.click(
+                        fn=_switch_stt_backend,
+                        inputs=[stt_be_dropdown],
+                        outputs=[stt_be_result, stt_backend_md, stt_be_dropdown],
+                    )
 
                     gr.Markdown("---")
                     with gr.Row():
                         stt_dl_model_id = gr.Textbox(
-                            label="Model ID",
+                            label="Download model",
                             placeholder="mobiuslabsgmbh/faster-whisper-large-v3-turbo",
                             scale=3,
                         )
-                        stt_dl_btn = gr.Button("Download", variant="primary", scale=1)
-                    stt_dl_result = gr.Textbox(label="Result", interactive=False)
+                        stt_dl_btn = gr.Button("Download", variant="secondary", scale=1)
+                    stt_dl_result = gr.Textbox(label="Download result", interactive=False)
 
                     stt_dl_btn.click(
                         fn=_download_stt_model,
@@ -548,23 +611,59 @@ def create_app() -> gr.Blocks:
 
                 with gr.Accordion("Text-to-Speech (TTS)", open=True):
                     tts_backend_md = gr.Markdown(value=_build_tts_backend_md)
-                    tts_refresh_btn = gr.Button("Refresh", variant="secondary", size="sm")
-                    tts_refresh_btn.click(fn=_build_tts_backend_md, outputs=tts_backend_md)
+
+                    with gr.Row():
+                        tts_be_dropdown = gr.Dropdown(
+                            choices=backends.get("tts", {}).get("available", []),
+                            value=backends.get("tts", {}).get("active", "kokoro"),
+                            label="Backend",
+                            scale=2,
+                        )
+                        tts_be_switch_btn = gr.Button("Switch", variant="primary", scale=1)
+                    tts_be_result = gr.Textbox(label="Result", interactive=False)
+
+                    tts_be_switch_btn.click(
+                        fn=_switch_tts_backend,
+                        inputs=[tts_be_dropdown],
+                        outputs=[tts_be_result, tts_backend_md, tts_be_dropdown, tts_voice],
+                    )
 
                     gr.Markdown("---")
                     with gr.Row():
                         tts_dl_model_id = gr.Textbox(
-                            label="Model ID",
+                            label="Download model",
                             placeholder="kokoro",
                             scale=3,
                         )
-                        tts_dl_btn = gr.Button("Download", variant="primary", scale=1)
-                    tts_dl_result = gr.Textbox(label="Result", interactive=False)
+                        tts_dl_btn = gr.Button("Download", variant="secondary", scale=1)
+                    tts_dl_result = gr.Textbox(label="Download result", interactive=False)
 
                     tts_dl_btn.click(
                         fn=_download_tts_model,
                         inputs=[tts_dl_model_id],
                         outputs=[tts_dl_result, tts_backend_md],
+                    )
+
+                    gr.Markdown("---\n**Voice Clone** (requires compatible backend)")
+                    with gr.Row():
+                        clone_voice_id = gr.Textbox(label="Voice ID", placeholder="my_voice", scale=2)
+                        clone_ref_text = gr.Textbox(
+                            label="Reference text", placeholder="Transcript of the audio", scale=2
+                        )
+                        clone_lang = gr.Dropdown(
+                            choices=["en", "es", "fr", "de", "it", "ja", "ko", "zh", "ru", "pt-br"],
+                            value="en",
+                            label="Language",
+                            scale=1,
+                        )
+                    clone_ref_audio = gr.Audio(type="filepath", label="Reference audio (3-15s)")
+                    clone_btn = gr.Button("Clone Voice", variant="primary")
+                    clone_result = gr.Textbox(label="Clone result", interactive=False)
+
+                    clone_btn.click(
+                        fn=_clone_voice,
+                        inputs=[clone_voice_id, clone_ref_audio, clone_ref_text, clone_lang],
+                        outputs=[clone_result, tts_backend_md, tts_voice],
                     )
 
     return app

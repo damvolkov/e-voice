@@ -1,12 +1,13 @@
 """TTS domain types — backend-agnostic value objects for text-to-speech."""
 
+from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import Literal, Self
 
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from e_voice.core.settings import DeviceType
 
@@ -59,6 +60,28 @@ def resolve_voice_lang(voice: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class VoiceEntry:
+    """Typed voice metadata — used by all backends to expose voices uniformly."""
+
+    id: str
+    language: str = "multilingual"
+    cloned: bool = False
+
+
+def parse_voice_filename(filename: str) -> VoiceEntry:
+    """Parse a voice file stem like 'aiden_en' → VoiceEntry(id='aiden', language='en').
+
+    Convention: {name}_{langcode}.ext — last underscore segment is the language.
+    Falls back to 'multilingual' if no underscore found.
+    """
+    stem = filename.removesuffix(".pt").removesuffix(".bin")
+    if "_" in stem:
+        name, lang = stem.rsplit("_", 1)
+        return VoiceEntry(id=name, language=lang, cloned=True)
+    return VoiceEntry(id=stem, language="multilingual", cloned=True)
+
+
+@dataclass(frozen=True, slots=True)
 class TTSModelSpec:
     """Identity of a loaded TTS model+device pair."""
 
@@ -106,9 +129,9 @@ class SpeechRequest(BaseModel):
     input: str = Field(..., min_length=1, max_length=10_000, description="Text to synthesize.")
     voice: str = Field(
         default="af_heart",
-        min_length=4,
-        description="Voice ID — first char encodes language, second encodes gender (f/m).",
-        examples=["af_heart", "ef_dora", "bm_george", "jf_alpha"],
+        min_length=1,
+        description="Voice ID — backend-specific identifier.",
+        examples=["af_heart", "serena", "tatan"],
     )
     response_format: SpeechResponseFormat = Field(
         default=SpeechResponseFormat.MP3,
@@ -121,35 +144,17 @@ class SpeechRequest(BaseModel):
     lang: str = Field(
         default="en-us",
         min_length=2,
-        max_length=10,
-        description="BCP-47 language code. Auto-inferred from voice prefix when not provided.",
-        examples=["en-us", "es", "fr", "ja"],
+        max_length=15,
+        description="BCP-47 language code or language name.",
+        examples=["en-us", "es", "english", "spanish"],
     )
 
-    @field_validator("voice")
-    @classmethod
-    def _validate_voice_prefix(cls, v: str) -> str:
-        resolve_voice_lang(v)
-        return v
-
-    @field_validator("lang")
-    @classmethod
-    def _validate_lang_code(cls, v: str) -> str:
-        if v not in _VALID_LANGS:
-            raise ValueError(f"Unsupported language '{v}'. Valid: {', '.join(sorted(_VALID_LANGS))}")
-        return v
-
     @model_validator(mode="after")
-    def _resolve_and_validate_lang(self) -> Self:
-        """Infer lang from voice prefix; reject explicit lang that conflicts with voice."""
-        voice_lang = resolve_voice_lang(self.voice)
+    def _resolve_lang_from_voice(self) -> Self:
+        """Infer lang from Kokoro voice prefix if applicable; leave as-is otherwise."""
         if "lang" not in self.model_fields_set:
-            self.lang = voice_lang
-        elif self.lang != voice_lang:
-            raise ValueError(
-                f"Language '{self.lang}' conflicts with voice '{self.voice}' "
-                f"(voice language: '{voice_lang}'). Pick a voice that matches."
-            )
+            with suppress(ValueError):
+                self.lang = resolve_voice_lang(self.voice)
         return self
 
 

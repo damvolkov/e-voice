@@ -14,7 +14,7 @@ from e_voice.adapters.base import TTSBackend
 from e_voice.core.logger import logger
 from e_voice.core.settings import DeviceType
 from e_voice.core.settings import settings as st
-from e_voice.models.tts import AudioChunk, OnnxProvider, SynthesisParams, TTSModelSpec
+from e_voice.models.tts import AudioChunk, OnnxProvider, SynthesisParams, TTSModelSpec, VoiceEntry, resolve_voice_lang
 
 ##### HELPERS #####
 
@@ -36,11 +36,12 @@ def _resolve_provider(device: str) -> OnnxProvider:
 class KokoroAdapter(TTSBackend):
     """Manages Kokoro-ONNX TTS model registry and synthesis."""
 
-    __slots__ = ("_models", "_voices")
+    __slots__ = ("_models", "_voice_entries", "_voices")
 
     def __init__(self) -> None:
         self._models: dict[TTSModelSpec, Kokoro] = {}
         self._voices: list[str] = []
+        self._voice_entries: list[VoiceEntry] = []
 
     # ── Capabilities ──────────────────────────────────────────────────
 
@@ -55,6 +56,11 @@ class KokoroAdapter(TTSBackend):
         """Available voice IDs (cached after first model load)."""
         return self._voices
 
+    @property
+    def voice_entries(self) -> list[VoiceEntry]:
+        """Voice metadata with resolved language codes."""
+        return self._voice_entries
+
     # ── Model Lifecycle ───────────────────────────────────────────────
 
     async def load(self, spec: TTSModelSpec | None = None) -> None:
@@ -63,10 +69,10 @@ class KokoroAdapter(TTSBackend):
         if target in self._models:
             return
 
-        model_dir = st.MODELS_PATH / "tts" / st.tts.backend
-        model_dir.mkdir(parents=True, exist_ok=True)
-        model_path = model_dir / st.tts.model_filename
-        voices_path = model_dir / st.tts.voices_filename
+        models_dir = st.MODELS_PATH / "tts" / "kokoro" / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        model_path = models_dir / st.tts.model_filename
+        voices_path = models_dir / st.tts.voices_filename
 
         if not model_path.exists() or not voices_path.exists():
             await self._ka_download_files(model_path, voices_path)
@@ -79,7 +85,8 @@ class KokoroAdapter(TTSBackend):
         self._models[target] = kokoro
         if not self._voices:
             self._voices = kokoro.get_voices()
-        logger.info("✅ MODEL_LOADED", extra={"model": target.model_id, "provider": provider.value})
+            self._voice_entries = self._ka_build_voice_entries(self._voices)
+        logger.info("✅ MODEL_LOADED", extra={"model": target.model_id, "voices": len(self._voices)})
 
     async def unload(self, spec: TTSModelSpec | None = None) -> bool:
         """Unload model and release resources."""
@@ -100,10 +107,10 @@ class KokoroAdapter(TTSBackend):
 
     async def download(self, model_id: str = "kokoro") -> Path:
         """Download Kokoro model files to disk. Returns model directory."""
-        model_dir = st.MODELS_PATH / "tts" / st.tts.backend
-        model_dir.mkdir(parents=True, exist_ok=True)
-        await self._ka_download_files(model_dir / st.tts.model_filename, model_dir / st.tts.voices_filename)
-        return model_dir
+        models_dir = st.MODELS_PATH / "tts" / "kokoro" / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        await self._ka_download_files(models_dir / st.tts.model_filename, models_dir / st.tts.voices_filename)
+        return models_dir
 
     # ── Batch Synthesis ───────────────────────────────────────────────
 
@@ -133,6 +140,18 @@ class KokoroAdapter(TTSBackend):
             yield chunk
 
     # ── Private ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _ka_build_voice_entries(voice_ids: list[str]) -> list[VoiceEntry]:
+        """Build VoiceEntry list with language resolved from Kokoro prefix convention."""
+        entries: list[VoiceEntry] = []
+        for vid in voice_ids:
+            try:
+                lang = resolve_voice_lang(vid)
+            except ValueError:
+                lang = "unknown"
+            entries.append(VoiceEntry(id=vid, language=lang))
+        return entries
 
     def _ka_resolve(self, spec: TTSModelSpec | None = None) -> Kokoro:
         """Resolve spec → loaded Kokoro instance."""
