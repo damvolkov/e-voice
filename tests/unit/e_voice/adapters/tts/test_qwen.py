@@ -1,8 +1,10 @@
 """Unit tests for QwenAdapter — lifecycle, synthesis routing, streaming, clone, capabilities.
 
 All torch/qwen-tts calls are mocked since they are optional dependencies.
+Skipped entirely in CI when torch is not installed.
 """
 
+from importlib.util import find_spec
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -11,6 +13,8 @@ import pytest
 from e_voice.core.settings import DeviceType
 from e_voice.models.error import BackendCapabilityError
 from e_voice.models.tts import SynthesisParams, TTSModelSpec
+
+pytestmark = pytest.mark.skipif(find_spec("torch") is None, reason="torch not installed (optional dep)")
 
 
 @pytest.fixture
