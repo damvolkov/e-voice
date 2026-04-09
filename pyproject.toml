@@ -151,9 +151,11 @@ invalid-overload = "ignore"
 source = ["e_voice"]
 branch = true
 # Entrypoints (not unit-testable) + Robyn internals (covered by integration tests)
+# Optional backend adapters excluded — tested only when their deps are installed
 omit = [
     "src/e_voice/main.py",
     "src/e_voice/front.py",
+    "src/e_voice/adapters/tts/qwen.py",
 ]
 
 [tool.coverage.report]
