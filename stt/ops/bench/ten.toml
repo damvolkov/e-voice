@@ -1,0 +1,5 @@
+[stt.pipeline.vad]
+backend = "ten"
+
+[stt.pipeline.asr]
+offline = { backend = "live" }

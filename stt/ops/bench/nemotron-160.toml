@@ -1,0 +1,4 @@
+[stt.pipeline.asr]
+backend = "nemotron"
+chunk = "160ms"
+offline = { backend = "live" }

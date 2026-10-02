@@ -1,0 +1,7 @@
+# Canary with Whisper-tiny language identification choosing each segment's language.
+[stt.pipeline.lid]
+backend = "whisper"
+
+[stt.pipeline.asr]
+backend = "canary"
+offline = { backend = "live" }

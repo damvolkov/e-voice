@@ -1,0 +1,79 @@
+##### E-VOICE #####
+# Every key below is the default. Closed choices list every accepted value; anything else, any unknown
+# key and any out-of-range value stops the service at startup. Override any key from the environment:
+# EVOICE_<SECTION>__<KEY>, e.g. EVOICE_STT__PIPELINE__ASR__CHUNK=560ms.
+
+##### SERVER #####
+[server]
+host = "0.0.0.0"
+port = 5500
+upload = 25                                  # MiB per transcription request
+emotion = "field"                            # field | tag | off   (tag also prefixes text: "[angry] …")
+log = { level = "info,ort=warn,symphonia=warn", format = "text" }   # format: text | json
+
+##### STT #####
+[stt]
+lang = "es"                                  # es | en   (requests may override)
+
+[stt.pipeline]
+pending = 4                                  # live segments per stream before overload applies
+overload = "reject"                          # reject | evict
+stall = "60s"                                # longest a segment may stay open
+tick = "50ms"
+preroll = "2s"                               # audio kept so streaming ASR starts at speech onset
+jobs = 8                                     # segment work in flight across all streams
+gate = { close = "window", idle = "8s" }     # close: utterance | window | session   (wake word only)
+gain = { peak = -6.0, max = 40.0, release = "5s" }   # dBFS target, dB max boost (0 = off)
+
+[stt.pipeline.denoise]
+backend = "off"                              # off | gtcrn   (streaming speech enhancement before gain and VAD)
+threads = 1
+
+[stt.pipeline.ww]
+backend = "off"                              # off | kws | oww
+keyword = "hey eager"                        # kws: any English phrase (2+ words) · oww: hey_jarvis
+# threshold = 0.1                            # (0, 1]; kws 0.1 · oww 0.5 — `make wake WORD="hey eager"` measures it
+# boost = 3.0                                # kws only
+cooldown = "2s"
+threads = 1
+
+[stt.pipeline.vad]
+backend = "silero"                           # silero | ten
+threshold = 0.5
+min_silence = "500ms"                        # silence that ends a segment (latency floor of finals)
+min_speech = "250ms"
+max_speech = "20s"
+pad = "300ms"                                # audio kept around each segment for the nodes
+threads = 1
+
+[stt.pipeline.lid]
+backend = "off"                              # off | whisper   (per-segment language for batch decoding)
+threads = 2
+min = "1s"                                   # shorter segments keep the requested language
+
+[stt.pipeline.asr]
+backend = "nemotron"                         # streaming: nemotron | kroko (CC-BY-SA, research only)
+                                             # per segment: parakeet | canary | cohere | whisper
+# chunk = "1120ms"                           # nemotron only: 160ms | 560ms | 1120ms
+# lead = "300ms"                             # streaming only
+# tail = "1200ms"                            # streaming only
+threads = 4
+deadline = "15s"
+offline = { backend = "parakeet", threads = 4, choices = [] }
+# offline.backend: uploaded files by default — parakeet | canary | cohere | whisper | live
+# offline.choices: more engines loaded at startup, picked per request by the model field
+#                  (model, model_id): e.g. ["whisper", "cohere"]
+
+[stt.pipeline.ser]
+backend = "emotion2vec"                      # emotion2vec | off
+threads = 4
+deadline = "5s"
+min = "500ms"                                # shorter segments are not classified
+
+[stt.ops]
+data = "data/stt"                            # models/ (pipeline) · ops/ (toolkit, tool models)
+manifest = "stt/models.toml"
+verify = "stamp"                             # stamp | full
+
+##### TTS #####
+[tts]                                        # reserved

@@ -1,16 +1,6 @@
 {
     "editor.fontFamily": "JetBrains Mono",
     "editor.fontLigatures": true,
-    "python.testing.pytestArgs": [
-        "tests"
-    ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true,
-    "python.defaultInterpreterPath": "./.venv/bin/python",
-    "python.analysis.typeCheckingMode": "basic",
-    "python.analysis.autoImportCompletions": true,
-    "python.analysis.indexing": true,
-    "python.analysis.extraPaths": [
-        "./src"
-    ]
+    "rust-analyzer.cargo.targetDir": "data/ops/target/analyzer",
+    "rust-analyzer.check.command": "clippy"
 }

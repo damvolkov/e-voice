@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 43cf865300e75a3b71b12d167451700c85b4ad27318707466add72add98c10f1 # shrinks to plan = SessionPlan { lang: Es, asr: AsrPlan { mode: Streaming, deadline: 100ms }, ser: None, gate: Disabled, pending: 0, overload: Reject, stall: 1s }, ops = [End(1), Start, Emotion(1, true)], end = Drain

@@ -1,424 +1,227 @@
 <p align="center">
-  <img src="assets/e-voice-landscape-dark.svg" alt="e-voice" width="420">
+  <img src="assets/e-voice.svg" alt="e-voice" width="160" />
+</p>
+
+<h1 align="center">e-voice</h1>
+
+<p align="center">
+  <strong>CPU-first speech service in Rust — streaming STT with emotion on every segment, behind OpenAI, Deepgram and ElevenLabs compatible APIs.</strong>
 </p>
 
 <p align="center">
-  <strong>Production-grade Speech API</strong> — STT (faster-whisper) + TTS (Kokoro-ONNX)<br>
-  HTTP, SSE, chunked streaming, and WebSocket transports
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-%3E%3D1.94-orange?logo=rust&logoColor=white" alt="Rust"></a>
+  <a href="https://github.com/k2-fsa/sherpa-onnx"><img src="https://img.shields.io/badge/runtime-sherpa--onnx%201.13.8-blue" alt="sherpa-onnx"></a>
+  <a href="https://ubuntu.com/"><img src="https://img.shields.io/badge/platform-Linux%20x86__64-E95420?logo=linux&logoColor=white" alt="Linux"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+  <a href="https://github.com/j178/prek"><img src="https://img.shields.io/badge/hooks-prek-blueviolet" alt="prek"></a>
 </p>
 
-<p align="center">
-  Powered by <a href="https://github.com/sparckles/Robyn">Robyn</a> (Rust-backed async Python)
-</p>
-
 ---
 
-## Quick Start
+One pipeline, every node swappable from config. Full documentation:
+**[damvolkov.github.io/e-voice](https://damvolkov.github.io/e-voice/)** (built locally with `make docs`).
+
+```
+audio ─▶ [denoise] ─▶ AGC ─▶ [ww] ─▶ VAD ─▶ [lid] ─▶ ASR (streaming partials) ─┬─▶ join ─▶ final {text, lang, emotion}
+                                                                               └─▶ SER ─┘
+```
+
+| Node | Backends | Runtime |
+|---|---|---|
+| denoise | `off` (default), `gtcrn` | sherpa-onnx |
+| ww | `off` (default), `kws` (open vocabulary, phrase `hey eager`), `oww` (openWakeWord) | sherpa-onnx · `ort` |
+| vad | `silero` (default), `ten` | sherpa-onnx |
+| lid | `off` (default), `whisper` (tiny) | sherpa-onnx |
+| asr | streaming: `nemotron` 3.5 (live default), `kroko` (CC-BY-SA, research only) · per segment: `parakeet` TDT v3 (file default), `canary` 180M flash, `cohere` Transcribe, `whisper` turbo | sherpa-onnx |
+| ser | `emotion2vec` plus base (default), `emotion2vec-large` (local export), `off` | `ort` |
+
+Spanish and English; sherpa-onnx and `ort` share one `libonnxruntime.so`; no GPU.
+
+## Quickstart
 
 ```bash
-docker run -p 5500:80 --gpus all ghcr.io/damvolkov/e-voice:latest
+make install             # OS packages, pinned Rust (rust-toolchain.toml), uv, prek, llvm-cov, git hooks
+make setup               # sherpa toolkit + the models the config declares → data/stt
+make serve               # gateway on :5500, docs at http://127.0.0.1:5500/docs
+make stt ARGS="--flat"   # another terminal: talk; Ctrl+C to finish (--struct for JSON events)
 ```
 
-Open `http://localhost:5500` — Gradio UI, API, and docs on one port.
+With Docker — everything under [`docker/`](docker), one Dockerfile and one compose per deployment:
 
 ```bash
-# Local development
-make install
-make dev              # API on :5500, WS on :5700, Gradio UI on :5600
+make up                  # MODE=full (default): every service in one container on :5500
+make up MODE=stt         # the STT service alone on :5500
+make up MODE=split       # stt on :5500 + tts on :5600 (tts is a template until its crate exists)
+make down [MODE=…]
 ```
 
-| Service | Local | Docker |
-|---------|-------|--------|
-| Gradio UI | `localhost:5600` | `localhost:5500` |
-| REST API | `localhost:5500/v1/...` | `localhost:5500/v1/...` |
-| WebSocket | `ws://localhost:5700/v1/...` | `ws://localhost:5500/v1/...` |
-| Docs | `localhost:5500/docs` | `localhost:5500/docs` |
+| Mode | Dockerfile | Compose | Image |
+|---|---|---|---|
+| `full` | `docker/Dockerfile.full` | `docker/compose.full.yml` | `e-voice:full` |
+| `stt` | `docker/Dockerfile.stt` | `docker/compose.stt.yml` | `e-voice:stt` |
+| `tts` (template) | `docker/Dockerfile.tts` | `docker/compose.tts.yml` | `e-voice:tts` |
 
-In Docker, nginx routes HTTP and WebSocket on the same port (`/v1/` paths auto-detect via `Upgrade` header).
+Each Dockerfile is two-stage (cargo-chef builder → debian-slim runtime, non-root, tini, healthcheck)
+with its own `.dockerignore` beside it. A one-shot `pull` service installs the configured models into
+the `e-voice-stt` volume (shared by `full` and `stt`; `EVOICE_STT_DATA=/abs/path` for a host directory)
+before the service starts.
 
----
+`make install` detects the platform; force it with `OS=ubuntu|mac|windows` (ubuntu = any apt
+distribution, windows = Git Bash with winget). Its parts run alone: `system` (compiler, cmake,
+pkg-config, curl, bzip2, ALSA headers on Linux), `toolchain`, `tools`. The Dockerfiles run the same
+`make system`, `make sherpa` and `make dist`, and CI runs `make system toolchain sherpa` then
+`make hooks` — one definition of every step. Prebuilt sherpa-onnx libraries are pinned for
+linux-x64, macOS (universal2) and windows-x64; only Linux is exercised by CI.
 
-## Transport Map
+`ecli` and every client below point at `127.0.0.1:5500` either way.
 
-Every endpoint is available via four transport protocols. Taxonomical aliases make the transport explicit in the URL.
+## API
 
-| Service | Transport | Endpoint | Alias | Content-Type |
-|---------|-----------|----------|-------|-------------|
-| **STT** | HTTP | `POST /v1/audio/transcriptions` | `/v1/stt/http` | `application/json`, `text/plain` |
-| **STT** | SSE | `POST /v1/audio/transcriptions` + `stream=true` | `/v1/stt/sse` | `text/event-stream` |
-| **STT** | WebSocket | `WS /v1/audio/transcriptions` | `WS /v1/stt/ws` | binary PCM16-LE or text (base64) |
-| **TTS** | HTTP | `POST /v1/audio/speech` + `stream=false` | `/v1/tts/http` | `audio/*` |
-| **TTS** | SSE | `POST /v1/audio/speech` + `stream_format=sse` | `/v1/tts/sse` | `text/event-stream` |
-| **TTS** | Streaming | `POST /v1/audio/speech` + `stream=true` | `/v1/tts/stream` | `audio/*` (chunked) |
-| **TTS** | WebSocket | `WS /v1/audio/speech` | `WS /v1/tts/ws` | text frames (JSON) |
+Interactive reference: `GET /docs` (Scalar), spec at `GET /openapi.json`. All transports share one
+`Runner`: uploaded files go through the lossless file intake (input pauses instead of dropping
+segments), sockets through the live intake.
 
-Aliases point to the exact same handler — zero overhead, full compatibility.
+| Protocol | Endpoint | Shape |
+|---|---|---|
+| OpenAI transcriptions | `POST /v1/audio/transcriptions` | multipart; `json`, `text`, `srt`, `vtt`, `verbose_json`; `stream=true` → SSE `transcript.text.delta` / `done` |
+| OpenAI Realtime | `GET /v1/realtime` (WebSocket) | `session.update`, `input_audio_buffer.append` (base64 pcm16, 24 kHz unless set) → `speech_started` / `stopped` / `committed`, `…transcription.delta` / `completed` |
+| Deepgram | `POST /v1/listen` · `GET /v1/listen` (WebSocket) | prerecorded `results.channels[].alternatives[]`; live `Results` (interim + final), `SpeechStarted`, `UtteranceEnd`, `Metadata`; `linear16` / `pcm_f32le` |
+| ElevenLabs Scribe | `POST /v1/speech-to-text` | multipart `file`, `language_code` (`spa`, `eng`, `es`, `en`) |
+| Native | `GET /v1/stream` (WebSocket) | `?lang&rate&encoding=s16le\|f32le&view=struct\|flat`; binary PCM in, events out |
+| — | `GET /v1/models`, `GET /health` | |
 
----
+Anthropic has no speech-to-text API, so there is nothing to mirror.
 
-## API Reference
+### Emotion
 
-Base URL: `http://localhost:5500`
+`server.emotion` sets the default; every endpoint accepts `emotion=field|tag|off` per request.
 
-### Speech-to-Text (STT)
+| Mode | Effect |
+|---|---|
+| `field` | an `emotion` object on segments, finals and summaries (clients that don't know it ignore it) |
+| `tag` | the object, plus `[angry] …` prefixed to each segment's text, for clients that only read `text` |
+| `off` | neither; SER still runs unless `stt.pipeline.ser.backend = "off"` |
 
-#### HTTP — `POST /v1/stt/http`
+### Native stream
 
-Send an audio file, receive the full transcription.
-
-**Request**: `multipart/form-data`
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `file` | binary | required | Audio file (WAV, MP3, FLAC, etc.) |
-| `model` | string | config default | Whisper model ID |
-| `language` | string | auto-detect | ISO 639-1 code |
-| `prompt` | string | — | Context hint |
-| `response_format` | string | `json` | `json`, `text`, `verbose_json`, `srt`, `vtt` |
-| `temperature` | float | `0.0` | Sampling temperature (0.0–1.0) |
-| `vad_filter` | bool | `false` | Voice Activity Detection |
-| `hotwords` | string | — | Bias toward specific words |
-| `timestamp_granularities[]` | string | `segment` | `segment` or `word` |
-
-**Response formats**:
+`view=struct` (default) sends one JSON event per frame; `view=flat` sends only each final's text.
+Text frame `{"type":"end"}` drains pending segments, then `{"type":"closed"}` and close code 1000.
 
 ```json
-// json
-{"text": "Hello world."}
-
-// verbose_json
-{"task": "transcribe", "language": "en", "duration": 2.5, "text": "Hello world.", "segments": [...], "words": [...]}
+{"type":"speech","segment":0,"state":"started","at":8288}
+{"type":"partial","segment":0,"text":"No preguntes qué"}
+{"type":"speech","segment":0,"state":"stopped","at":91840}
+{"type":"final","segment":0,"span":{"start":8288,"end":91840},"lang":"es","text":"…","emotion":{"label":"neutral","scores":{…},"model":"emotion2vec-plus-base"},"error":null}
+{"type":"closed"}
 ```
 
-```
-// text
-Hello world.
+Every segment gets exactly one `final`, in order. A late or failed SER yields `unknown`; a failed ASR
+sets `error`. Closing the socket cancels; SIGTERM finalizes open segments.
 
-// srt
-1
-00:00:00,000 --> 00:00:02,500
-Hello world.
-
-// vtt
-WEBVTT
-
-00:00:00.000 --> 00:00:02.500
-Hello world.
-```
-
-Translation: `POST /v1/stt/translate` (same fields, outputs English).
-
-#### SSE — `POST /v1/stt/sse`
-
-Same request with `stream=true`. Returns `text/event-stream`:
-
-```
-data: Hello
-data:  world.
-data: [DONE]
-```
-
-#### WebSocket — `WS /v1/stt/ws`
-
-Real-time streaming STT with LocalAgreement.
-
-**Query parameters**: `?language=es&response_format=json&model=...&segmentation=true`
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `language` | config default | ISO 639-1 code, or `auto` |
-| `response_format` | config default | `json`, `text`, `verbose_json` |
-| `model` | config default | Whisper model ID |
-| `segmentation` | `false` | Enable VAD-based utterance segmentation |
-
-**Protocol**:
-1. Connect with optional query params
-2. Send audio chunks (16kHz mono):
-   - **Binary frames** (recommended): raw PCM16-LE bytes — zero overhead, industry standard
-   - **Text frames** (backward compat): base64-encoded PCM16
-3. Send `END_OF_AUDIO` as text frame to flush the session
-4. Receive streaming transcription events
-
-**Response** (`response_format=json`):
-
-```json
-{"type": "transcript_update", "text": "Hola mundo", "partial": "qué tal", "is_final": false}
-{"type": "transcript_final", "text": "Hola mundo, qué tal.", "partial": "", "is_final": false}
-{"type": "session_end", "text": "Hola mundo, qué tal.", "partial": "", "is_final": true}
-```
-
-When `response_format=text`: returns confirmed text as plain string.
-
-**Utterance Segmentation** (`segmentation=true`):
-
-When enabled, Silero VAD runs frame-level neural speech detection (~44us/frame) on every audio chunk.
-When the speaker stops talking, a `segment_end` event is emitted with the utterance text, and the
-text resets for the next utterance — matching the behavior of Google Cloud STT and Deepgram.
-
-```json
-{"type": "transcript_update", "text": "Hola busca", "partial": "información", "is_final": false}
-{"type": "segment_end", "text": "Hola busca información", "partial": "", "is_final": true}
-{"type": "transcript_update", "text": "perico", "partial": "", "is_final": false}
-{"type": "segment_end", "text": "perico", "partial": "", "is_final": true}
-{"type": "session_end", "text": "", "partial": "", "is_final": true}
-```
-
-Without `segmentation=true`, text accumulates across the entire session (backward-compatible default).
-VAD sensitivity is tunable via `vad.min_silence_duration_ms` in `config.yaml` (default 2000ms,
-recommended 600–800ms for conversational turn detection).
-
-**Features**:
-- **Binary PCM16-LE frames** — same format as OpenAI Realtime, Deepgram, Azure Speech, AssemblyAI
-- **Frame-level VAD** — Silero neural VAD with per-frame LSTM state, configurable silence threshold
-- LocalAgreement — words are never retracted once confirmed
-- Sentence-boundary finalization + same-output detection
-- Bounded audio buffer (45s max) with context re-transcription
-- Per-connection state with automatic cleanup
-- Base64 text frames still supported for backward compatibility
-
-### Text-to-Speech (TTS)
-
-#### HTTP — `POST /v1/tts/http`
-
-Send text, receive complete audio file.
-
-**Request**: `application/json`
-
-```json
-{
-  "input": "Hello world.",
-  "model": "kokoro",
-  "voice": "af_heart",
-  "response_format": "wav",
-  "speed": 1.0,
-  "stream": false
-}
-```
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `input` | string | required | Text to synthesize |
-| `model` | string | `kokoro` | TTS model |
-| `voice` | string | `af_heart` | Voice ID (prefix = language) |
-| `response_format` | string | `mp3` | `pcm`, `mp3`, `wav`, `flac`, `opus`, `aac` |
-| `speed` | float | `1.0` | Speed multiplier (0.25–4.0) |
-| `stream` | bool | `true` | Enable streaming |
-
-Voices: `GET /v1/audio/voices`
-
-#### SSE — `POST /v1/tts/sse`
-
-Request with `stream=true` + `stream_format=sse`. Returns `text/event-stream`:
-
-```json
-{"type": "speech.audio.delta", "audio": "<base64_pcm16_24khz>"}
-{"type": "speech.audio.delta", "audio": "<base64_pcm16_24khz>"}
-{"type": "speech.audio.done"}
-```
-
-#### Streaming — `POST /v1/tts/stream`
-
-Request with `stream=true` + `stream_format=audio`. Returns chunked binary audio with `Content-Type: audio/*`.
-
-#### WebSocket — `WS /v1/tts/ws`
-
-Real-time streaming TTS.
-
-**Protocol**:
-1. Connect
-2. Send JSON: `{"input": "Hello", "voice": "af_heart", "speed": 1.0}`
-3. Receive audio chunks:
-
-```json
-{"type": "speech.audio.delta", "audio": "<base64_pcm16_24khz>"}
-{"type": "speech.audio.done"}
-```
-
-### Health & Models
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check + service info |
-| `GET` | `/v1/models` | List loaded models |
-| `GET` | `/v1/models/:model_id` | Get model info |
-| `GET` | `/v1/models/list` | List downloaded models on disk |
-| `POST` | `/v1/models/download` | Download model from HuggingFace |
-
----
-
-## OpenAI Compatibility
-
-e-voice is a drop-in replacement for the [OpenAI Audio API](https://platform.openai.com/docs/api-reference/audio):
-
-| OpenAI Endpoint | e-voice | Status |
-|-----------------|---------|--------|
-| `POST /v1/audio/transcriptions` | Same | Full |
-| `POST /v1/audio/translations` | Same | Full |
-| `POST /v1/audio/speech` | Same | Full |
-| `GET /v1/models` | Same | Full |
+### Clients
 
 ```python
 from openai import OpenAI
-
-client = OpenAI(base_url="http://localhost:5500/v1", api_key="unused")
-
-result = client.audio.transcriptions.create(
-    model="whisper-1", file=open("audio.wav", "rb")
-)
-
-response = client.audio.speech.create(
-    model="kokoro", voice="af_heart", input="Hello world."
-)
+client = OpenAI(base_url="http://127.0.0.1:5500/v1", api_key="unused")
+print(client.audio.transcriptions.create(model="whisper-1", file=open("a.mp3", "rb"), language="es").text)
 ```
 
-Extensions beyond OpenAI: SSE streaming, WebSocket transports, voice listing, model management.
+- **OpenHuman** — voice provider with `endpoint = "http://127.0.0.1:5500/v1"`, `capability = "stt"` and
+  `stt_api_style` = `openaiaudio` (default), `deepgram` or `elevenlabs`. It reads only `text`: set
+  `server.emotion = "tag"` to keep emotion in the transcript.
+- **Hermes** — its OpenAI STT provider with `stt.openai.base_url = "http://127.0.0.1:5500/v1"`.
 
----
-
-## Development
+## ecli
 
 ```bash
-make lint          # ruff check --fix + format
-make type          # ty type check
-make test          # unit tests (parallel, coverage >90%)
-make check         # lint + type + test
-make stt           # mic -> WebSocket STT binary PCM16 (ffmpeg + websocat)
-make tts           # text -> TTS with playback (curl + ffplay)
-make kill          # free ports 5500/5700/5600
+ecli devices                                   # inputs; * marks the system default
+ecli stt --flat --device "Q20i"                # live text with a level meter and latency per final
+ecli stt --struct --lang en --record sent.wav  # JSON events; keep exactly what was sent
+ecli stt --flat --wav sample.wav               # replay a file in real time instead of a microphone
+ecli stt --url ws://host:5500                  # another gateway
 ```
 
-## Web UI (Gradio)
-
-<p align="center">
-  <img src="assets/front.png" alt="e-voice Gradio UI" width="720">
-</p>
-
-Launches automatically alongside the API:
-
-- **Live Mic** — real-time WebSocket STT from browser microphone
-- **Speech-to-Text** — upload audio, select model/language, transcribe (with SSE streaming)
-- **Text-to-Speech** — enter text, pick voice/speed, synthesize audio (voices grouped by language)
-- **Voices** — browse all available voices organized by language (9 languages, 50+ voices)
-- **Models** — view and download STT/TTS models
-
-| Environment | URL |
-|-------------|-----|
-| Local | `http://localhost:5600` |
-| Docker | `http://localhost:5500` |
-
-Disable via `front.enabled: false` in `data/config/config.yaml`.
-
-## GPU / CPU Device Switcher
-
-<p align="center">
-  <img src="assets/e-voice-front-monitor.png" alt="GPU/CPU Monitor" width="360">
-</p>
-
-The system monitor shows real-time VRAM, GPU %, CPU %, and RAM usage. Both STT and TTS models
-can run on GPU or CPU, controlled via `config.yaml` or the runtime API.
-
-When `stt.cpu_fallback: true` (default), a CPU copy of the Whisper model is loaded alongside the
-GPU model at startup. If GPU inference fails or VRAM is exhausted, the system automatically falls
-back to CPU without downtime.
-
-The device controller (`/v1/system/device`) allows runtime switching between GPU and CPU for
-hot-swapping without restarts — useful for shared GPU environments where VRAM needs to be
-temporarily freed for other workloads.
+Inputs come from PulseAudio (served by PipeWire), so names match the system's sound settings. A
+"Monitor of …" input is what the speakers play, not a microphone; `ecli` warns about it, and about
+digital silence. Bluetooth headsets expose their microphone only in the headset (HFP) profile.
 
 ## Configuration
 
-All settings in `data/config/config.yaml` (YAML-based, typed via `pydantic-settings`):
+`evoice.toml` in the working directory (or `--config path`), overridden by `EVOICE_<SECTION>__<KEY>`
+(e.g. `EVOICE_STT__PIPELINE__ASR__CHUNK=560ms`). [`evoice.example.toml`](evoice.example.toml) lists
+every key with its default and every accepted value:
 
-```yaml
-system:
-  port: 5500
-  debug: true
-
-stt:
-  model: "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
-  device: gpu           # gpu, cpu, or auto
-  cpu_fallback: true    # load CPU model alongside GPU for automatic fallback
-
-tts:
-  device: gpu
-  default_voice: af_heart
-
-vad:
-  enabled: true
-  threshold: 0.65       # speech detection sensitivity (0.0–1.0)
-  min_silence_duration_ms: 2000  # silence duration to trigger segment end
-  min_speech_duration_ms: 300    # ignore speech shorter than this
-
-front:
-  enabled: true
-  port: 5600
+```
+[server]                     host, port, upload, emotion, log
+[stt]                        lang
+[stt.pipeline]               pending, overload, stall, tick, preroll, jobs, gate, gain
+[stt.pipeline.ww|vad|asr|ser] backend + its knobs
+[stt.ops]                    data, manifest, verify
+[tts]                        reserved
 ```
 
-## Production Deployment
+Choices are closed enums. An unknown backend, key or out-of-range value stops the service at startup.
 
-Pull the latest image from GHCR and run with GPU support. Create a `compose.prod.yml`:
+### Wake word
 
-```yaml
-services:
-  evoice:
-    image: ghcr.io/damvolkov/e-voice:latest
-    container_name: evoice
-    hostname: evoice
-    restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    labels:
-      e-core.category: "audio"
-      e-core.port: "5500"
-    ports:
-      # 5500 — e-voice STT + TTS Server (ai)
-      - "${EVOICE_PORT:-5500}:80"
-    volumes:
-      - models:/app/data/models
-      - ./config/evoice:/app/data/config:ro
-    environment:
-      - LOG_LEVEL=info
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    networks:
-      - e-core
+The pipeline runs ungated by default (`ww.backend = "off"`). With `kws` any English phrase of two or more
+words works without training; `make wake WORD="hey eager"` measures it — synthetic positives over three
+voices, decoys and real speech as negatives, every threshold × boost — and prints the
+`[stt.pipeline.ww]` block to paste. Single words fire on everyday speech; see
+[the calibration notes](docs/history/2026-10-benchmark.md#wake-word-kws-open-vocabulary).
 
-volumes:
-  models:
-    driver: local
+## Models
 
-networks:
-  e-core:
-    external: true
+[`stt/models.toml`](stt/models.toml) pins every artifact by URL (Hugging Face by commit) and sha256.
+`e-voice pull` installs atomically with a per-file digest stamp: pipeline models into
+`data/stt/models` (the Docker volume), tool and test models into `data/stt/ops/models`. `serve` never
+downloads and refuses to start on a missing or stale model; `e-voice verify --full` re-hashes everything.
+
+## Layout
+
 ```
+stt/                    the service (crate e-voice-stt, binary e-voice)
+├── src/
+│   ├── main.rs         serve | pull | verify | bench | wake
+│   ├── api/            gateway: live bridge, batch, openai/ deepgram/ elevenlabs/ native/, docs
+│   ├── config/         one typed section per node and domain
+│   ├── core/           settings, models, audio, runtime, logger
+│   ├── schema/         contracts: audio, lang, emotion, segment, event, transcript, error
+│   ├── workflow/       session (sans-IO state machine), runner, nodes; ww/ vad/ asr/ ser/
+│   └── ops/            internal tooling: bench, wake calibration, voice synthesis
+├── tests/              workflow, api, ops
+├── ops/                sherpa.sh, bench.sh, bench/*.toml
+└── models.toml
+cli/                    ecli: microphone → /v1/stream tester
+docker/                 Dockerfile.{full,stt,tts} (+ .dockerignore each), compose.{full,stt,tts}.yml
+eval/                   Python (uv): dataset fetch, scoring, report
+data/                   ignored: ops/target (cargo), stt/models, stt/ops/{sherpa,models,datasets,results}
+docs/history/           dated decisions and measurements
+```
+
+Adding a backend: a file in its node folder, a variant in `config/<node>.rs`, an arm in the registry.
+
+## Benchmark
 
 ```bash
-# Create config directory with your settings
-mkdir -p config/evoice
-cp data/config/config.yaml config/evoice/config.yaml
-# Edit config/evoice/config.yaml as needed
-
-docker compose -f compose.prod.yml up -d
+make setup ARGS=--all    # tool and test models too
+make datasets            # FLEURS es/en, MESD es, CREMA-D en, pinned by commit
+make bench               # stt/ops/bench/*.toml × datasets, file and live modes
+make report              # WER, CER, SER accuracy / F1 / angry recall, RTF, latency, CPU, RSS
 ```
 
-Models are downloaded automatically on first startup and persisted in the `models` volume. If `config/evoice/` is empty or missing the `config.yaml`, the image uses its built-in defaults.
+Current numbers and why the defaults are what they are: [docs/history/2026-10-benchmark.md](docs/history/2026-10-benchmark.md).
+Parakeet on files: 4.5% WER es / 8.1% en at 0.25 CPU s per audio second; Nemotron live: finals ~0.74 s
+after speech ends.
 
-## Data Layout
+## Quality gates
 
-```
-data/
-├── config/
-│   └── config.yaml   # All app configuration
-└── models/
-    ├── stt/           # Downloaded Whisper models (gitignored)
-    └── tts/           # Downloaded Kokoro models (gitignored)
-```
+| Command | Runs |
+|---|---|
+| `make check` | rustfmt, clippy (pedantic, `-D warnings`), layer bounds, tests without models |
+| `make backends` | model-backed tests: each backend in isolation, the pipeline, the gateway, the tools |
+| `make coverage` | every test with line coverage ≥ 90% |
+| `make hooks` | every prek hook (pre-commit: the `check` set, gitleaks, zizmor; pre-push: coverage) |
+
+The session core is property-tested: one final per segment, in order; bounded pending work; exactly one
+`closed`.

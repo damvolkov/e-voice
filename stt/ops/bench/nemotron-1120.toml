@@ -1,0 +1,5 @@
+# Nemotron 3.5 streaming, 1120 ms chunks (the live default), also for files.
+[stt.pipeline.asr]
+backend = "nemotron"
+chunk = "1120ms"
+offline = { backend = "live" }

@@ -1,0 +1,52 @@
+##### DOCS #####
+# Builds the OpenAPI document and the Zensical site with the same `make docs` as a workstation, then
+# publishes it to GitHub Pages. Inert until the DOCS_DEPLOY gate is on (.github/ci.vars.example).
+name: docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build site
+    if: vars.DOCS_DEPLOY == 'true' && github.event.repository.visibility == 'public'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: ". -> data/ops/target"
+      - name: system packages, pinned toolchain, sherpa
+        run: make system toolchain sherpa OS=ubuntu
+      - name: site
+        run: make docs
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: data/ops/site
+
+  deploy:
+    name: deploy to pages
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

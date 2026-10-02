@@ -1,185 +1,153 @@
-PROJECT ?= e-voice
-PACKAGE ?= src/e_voice
-SERVICE_PORT ?= 5500
-WS_PORT ?= 5700
-GRADIO_PORT ?= 5600
-WEBSOCAT_VERSION ?= 1.13.0
+.DEFAULT_GOAL := help
+MAKEFLAGS += --no-print-directory
+export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
+SHELL := bash
+PREK_VERSION ?= 0.5.4
+ZENSICAL_VERSION ?= 0.0.67
+COVERAGE ?= 90
+BUMP ?= patch
+CONFIG ?=
+CONFIGURED = $(if $(CONFIG),--config $(CONFIG))
+WORD ?= hey eager
+MODE ?= full
+COMPOSE = $(if $(filter split,$(MODE)),-f docker/compose.stt.yml -f docker/compose.tts.yml,-f docker/compose.$(MODE).yml)
+PACKAGES ?= --workspace
+BINS ?= e-voice ecli
+DIST ?= data/ops/dist
+TARGET = $(or $(CARGO_TARGET_DIR),data/ops/target)
+SUDO = $(if $(filter 0,$(shell id -u 2>/dev/null)),,sudo)
+KERNEL = $(firstword $(subst _, ,$(shell uname -s 2>/dev/null)))
+HOST_Linux = ubuntu
+HOST_Darwin = mac
+HOST_MINGW64 = windows
+HOST_MINGW32 = windows
+HOST_MSYS = windows
+HOST_CYGWIN = windows
+PLATFORM = $(or $(filter ubuntu mac windows,$(OS)),$(HOST_$(KERNEL)))
+ARGS = $(filter-out $(firstword $(MAKECMDGOALS)),$(MAKECMDGOALS))
+.PHONY: help install system system-ubuntu system-mac system-windows toolchain tools hooks coverage sherpa setup export annex gates release dist docs docs-serve wake datasets bench report serve stt image up down build fmt lint bounds test backends check
 
-OS := $(shell uname -s)
-ARCH := $(shell uname -m)
+help:  ## list targets
+	@awk 'BEGIN{FS=":.*##"} /^[a-z][a-zA-Z0-9_-]*:.*##/{printf "  \033[32m%-9s\033[0m %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
-BOLD   := \033[1m
-RESET  := \033[0m
-GREEN  := \033[1;32m
-YELLOW := \033[0;33m
-BLUE   := \033[0;34m
-CYAN   := \033[0;36m
-RED    := \033[0;31m
+install: system toolchain tools  ## everything a dev machine needs [OS=ubuntu|mac|windows, detected by default]
 
-export PYTHONPATH := $(CURDIR)/src
+system: system-$(PLATFORM)  ## OS build packages: compiler, cmake, pkg-config, curl, bzip2 (+ ALSA headers on Linux)
 
-NVIDIA_LIBS := $(CURDIR)/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:$(CURDIR)/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib
-export LD_LIBRARY_PATH := $(NVIDIA_LIBS):$(LD_LIBRARY_PATH)
+system-ubuntu:  # Debian family (apt): also what the Dockerfiles run
+	@$(SUDO) apt-get update -qq
+	@$(SUDO) env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+	  build-essential bzip2 ca-certificates cmake curl libasound2-dev pkg-config
 
-COMPOSE_FILE := compose.yml
+system-mac:  # Homebrew; bash ≥ 4 for the ops scripts, Xcode command line tools for the compiler
+	@xcode-select -p >/dev/null 2>&1 || xcode-select --install
+	@brew install bash cmake pkg-config
 
-.PHONY: help install sync lock lint type test test-integration check \
-        kill dev stt tts docker-up docker-down docker-build log clean
+system-windows:  # winget from Git Bash: MSVC build tools, cmake
+	@winget install --exact --silent --accept-package-agreements --accept-source-agreements --id Microsoft.VisualStudio.2022.BuildTools \
+	  --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+	@winget install --exact --silent --accept-package-agreements --accept-source-agreements --id Kitware.CMake
 
+toolchain:  ## rustup + the toolchain pinned in rust-toolchain.toml, and uv
+	@command -v rustup >/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain none
+	@command -v uv >/dev/null || curl -fsSL https://astral.sh/uv/install.sh | sh
+	@rustup toolchain install
 
-# Help
+tools: sherpa  ## prek and cargo-llvm-cov, then the git hooks
+	@uv tool install --quiet prek==$(PREK_VERSION)
+	@cargo install --quiet --locked cargo-llvm-cov
+	@prek install --force
 
-help:
-	@echo "$(BOLD)$(BLUE)e-voice$(RESET) — Speech API (Robyn + faster-whisper + Kokoro)"
-	@echo ""
-	@echo "$(BOLD)Setup:$(RESET)"
-	@echo "  $(GREEN)make install$(RESET)          Install everything (uv, deps, ffmpeg, websocat, pre-commit)"
-	@echo "  $(GREEN)make sync$(RESET)             Sync dependencies from lockfile"
-	@echo ""
-	@echo "$(BOLD)Development:$(RESET)"
-	@echo "  $(GREEN)make dev$(RESET)              API on :$(SERVICE_PORT), WS on :$(WS_PORT), Gradio on :$(GRADIO_PORT)"
-	@echo ""
-	@echo "$(BOLD)Live test (requires running server):$(RESET)"
-	@echo "  $(GREEN)make stt$(RESET)              mic → WebSocket STT  (ffmpeg + websocat)"
-	@echo "  $(GREEN)make tts$(RESET)              text → WebSocket TTS (websocat)"
-	@echo ""
-	@echo "$(BOLD)Quality:$(RESET)"
-	@echo "  $(GREEN)make lint$(RESET)             Ruff check + format"
-	@echo "  $(GREEN)make type$(RESET)             ty type checker"
-	@echo "  $(GREEN)make test$(RESET)             Unit tests (parallel, coverage >90%)"
-	@echo "  $(GREEN)make check$(RESET)            lint + type + test"
-	@echo ""
-	@echo "$(BOLD)Docker:$(RESET)"
-	@echo "  $(GREEN)make docker-up$(RESET)        Build + start (GPU, port :$(SERVICE_PORT))"
-	@echo "  $(GREEN)make docker-down$(RESET)      Stop"
-	@echo "  $(GREEN)make docker-build$(RESET)     Build image only"
-	@echo "  $(GREEN)make log$(RESET)              Tail container logs"
-	@echo ""
-	@echo "$(BOLD)Cleanup:$(RESET)"
-	@echo "  $(GREEN)make clean$(RESET)            Remove caches and build artifacts"
+hooks:  ## run every prek hook on every file (what CI runs)
+	@uvx prek==$(PREK_VERSION) run --all-files --show-diff-on-failure
 
+sherpa:  ## vendor the pinned sherpa-onnx libraries for this platform into data/stt/ops/sherpa
+	@stt/ops/sherpa.sh
 
-# Setup & Dependencies
+setup: sherpa  ## toolkit + exactly the models the config declares [CONFIG=path] [ARGS=--all adds tool/test models]
+	@cargo run -q --release -p e-voice-stt -- $(CONFIGURED) pull $(ARGS)
 
-install:
-	@echo "$(GREEN)[1/5] Installing uv$(RESET)"
-ifeq ($(OS),Linux)
-	@command -v uv >/dev/null 2>&1 || curl -LsSf https://astral.sh/uv/install.sh | sh
-else ifeq ($(OS),Darwin)
-	@command -v uv >/dev/null 2>&1 || brew install uv
-endif
-	@echo "$(GREEN)[2/5] Installing system deps (ffmpeg, websocat)$(RESET)"
-ifeq ($(OS),Linux)
-	@command -v ffmpeg >/dev/null 2>&1 || sudo apt-get install -y -qq ffmpeg > /dev/null
-	@command -v websocat >/dev/null 2>&1 || { \
-		WEBSOCAT_ARCH=$$([ "$(ARCH)" = "aarch64" ] && echo "aarch64" || echo "x86_64"); \
-		wget -qO /tmp/websocat "https://github.com/vi/websocat/releases/download/v$(WEBSOCAT_VERSION)/websocat.$${WEBSOCAT_ARCH}-unknown-linux-musl" && \
-		chmod +x /tmp/websocat && sudo mv /tmp/websocat /usr/local/bin/websocat; \
-	}
-else ifeq ($(OS),Darwin)
-	@command -v ffmpeg >/dev/null 2>&1 || brew install -q ffmpeg
-	@command -v websocat >/dev/null 2>&1 || brew install -q websocat
-endif
-	@echo "$(GREEN)[3/5] Syncing Python dependencies$(RESET)"
-	@uv sync --dev --quiet
-	@echo "$(GREEN)[4/5] Installing pre-commit hooks$(RESET)"
-	@uv run pre-commit install > /dev/null
-	@echo "$(GREEN)[5/5] Done$(RESET)"
+wake:  ## calibrate a kws wake phrase: make wake WORD="eager" (prints the [stt.pipeline.ww] block)
+	@cargo run -q --release -p e-voice-stt -- pull kws-gigaspeech piper-en-amy-low piper-en-lessac-medium piper-en-ryan-medium
+	@cargo run -q --release -p e-voice-stt -- $(CONFIGURED) wake "$(WORD)" $(ARGS)
 
-sync:
-	@uv sync --dev
+export:  ## export models without a published ONNX (emotion2vec+ large) into data/stt/ops/exports, then install them
+	@uv run -q --script eval/export/emotion2vec.py --out data/stt/ops/exports/emotion2vec-plus-large
+	@cargo run -q --release -p e-voice-stt -- pull emotion2vec-plus-large
 
-lock:
-	@uv lock
+datasets:  ## fetch the pinned evaluation sets into data/stt/ops/datasets
+	@cd eval && for set in "fleurs-es 200" "fleurs-en 200" "mesd" "crema 400"; do set -- $$set; uv run -q python -m e_voice_eval fetch $$1 $${2:+--limit $$2}; done
 
+bench: build  ## run the benchmark matrix (stt/ops/bench/*.toml × datasets) [configs forwarded]
+	@stt/ops/bench.sh $(ARGS)
 
-# Quality & Testing
+report:  ## compare every results file in data/stt/ops/results
+	@cd eval && uv run -q python -m e_voice_eval report ../data/stt/ops/results/*.jsonl --out ../data/stt/ops/results/report.md
 
-lint:
-	@uv run ruff check --fix $(PACKAGE) tests/
-	@uv run ruff format $(PACKAGE) tests/
+annex:  ## benchmark annex (table, CSV, charts) of every results file: make annex OUT=docs/history/<date>-<topic>
+	@cd eval && uv run -q python -m e_voice_eval annex ../data/stt/ops/results/*.jsonl --out ../$(OUT)
 
-type:
-	@uv run ty check
+serve: sherpa  ## run the gateway (release) [args forwarded]
+	@cargo run -q --release -p e-voice-stt -- $(CONFIGURED) serve $(ARGS)
 
-test:
-	@uv run pytest tests/unit -n auto -v -m 'not slow' --cov --cov-report=term-missing
+stt:  ## live mic transcription: make stt ARGS="--flat | --struct [--lang es]"
+	@cargo run -q --release -p ecli -- stt $(ARGS)
 
-test-integration:
-	@uv run pytest tests/integration -v -m slow
+docs:  ## the OpenAPI document, then the documentation site into data/ops/site
+	@cargo run -q --release -p e-voice-stt -- openapi > docs/api/openapi.json
+	@uvx zensical==$(ZENSICAL_VERSION) build --clean
 
-check: lint type test
+docs-serve:  ## live documentation preview on :8000
+	@cargo run -q --release -p e-voice-stt -- openapi > docs/api/openapi.json
+	@uvx zensical==$(ZENSICAL_VERSION) serve
 
+image:  ## build the runtime image(s): MODE=full (default) | stt | tts | split → e-voice:<mode>
+	@docker compose $(COMPOSE) build
 
-# Development — API on :5500, WS on :5700, Gradio on :5600
+up:  ## start with compose, installing configured models first [MODE=full|stt|tts|split]
+	@docker compose $(COMPOSE) up -d --build
 
-kill:
-	@for port in $(SERVICE_PORT) $(WS_PORT) $(GRADIO_PORT); do \
-		lsof -i :$$port -t 2>/dev/null | xargs -r kill -9; \
-	done
-	@echo "$(GREEN)=== Ports $(SERVICE_PORT)/$(WS_PORT)/$(GRADIO_PORT) freed ===$(RESET)"
+down:  ## stop the compose services [MODE=full|stt|tts|split]
+	@docker compose $(COMPOSE) down
 
-dev: kill
-	@echo "$(CYAN)=== API: http://localhost:$(SERVICE_PORT) | WS: ws://localhost:$(WS_PORT) | Gradio: http://localhost:$(GRADIO_PORT) ===$(RESET)"
-	@trap 'make -s kill' EXIT; \
-	LD_LIBRARY_PATH="$(NVIDIA_LIBS):$$LD_LIBRARY_PATH" uv run python -m robyn src/e_voice/main.py --dev
+build: sherpa  ## release build [PACKAGES="--package e-voice-stt"]
+	@cargo build --release --locked $(PACKAGES) $(ARGS)
 
+dist: build  ## binaries + native libraries into DIST/{bin,lib} [PACKAGES=… BINS=… DIST=…]
+	@for bin in $(BINS); do install -D $(TARGET)/release/$$bin $(DIST)/bin/$$bin; done
+	@mkdir -p $(DIST)/lib && cp -a data/stt/ops/sherpa/lib/. $(DIST)/lib/
 
-# Live test (requires running server — works with both local and docker)
-# Local:  API on :5500
-# Docker: API on :5500 (nginx proxies from :80)
+fmt:  ## format the tree
+	@cargo fmt --all
 
-STT_LANG ?= es
-STT_FMT ?= text
+lint: sherpa  ## rustfmt check + clippy, warnings are errors
+	@cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
 
-stt:
-	@command -v ffmpeg >/dev/null 2>&1 || { echo "$(RED)ffmpeg not found. Run: make install$(RESET)"; exit 1; }
-	@command -v websocat >/dev/null 2>&1 || { echo "$(RED)websocat not found. Run: make install$(RESET)"; exit 1; }
-	@echo "$(CYAN)=== STT: mic → ws://localhost:$(WS_PORT)/v1/audio/transcriptions?language=$(STT_LANG) ===$(RESET)"
-	@echo "$(YELLOW)Press Ctrl+C to stop$(RESET)"
-	@ffmpeg -loglevel quiet -f pulse -i default -ac 1 -ar 16000 -f s16le pipe:1 \
-		| websocat --binary "ws://localhost:$(WS_PORT)/v1/audio/transcriptions?language=$(STT_LANG)&response_format=$(STT_FMT)"
+bounds:  ## inner layers never import outer ones
+	@! grep -rnE 'crate::(core|workflow|api|ops)' stt/src/config \
+	  && ! grep -rnE 'crate::(workflow|core|config|api|ops)' stt/src/schema \
+	  && ! grep -rnE 'crate::(api|ops)' stt/src/workflow stt/src/core \
+	  && for node in denoise ww vad lid asr ser; do ! grep -rnE "crate::workflow::($$(echo denoise ww vad lid asr ser | tr ' ' '\n' | grep -vx $$node | paste -sd'|'))::" stt/src/workflow/$$node || exit 1; done \
+	  && printf '\033[32mbounds ok\033[0m\n'
 
-TTS_VOICE ?= af_heart
-TTS_FMT ?= pcm
+test: sherpa  ## unit, property and integration tests [args forwarded]
+	@cargo test --workspace $(ARGS)
 
-tts:
-	@command -v ffplay >/dev/null 2>&1 || { echo "$(RED)ffplay not found. Install: sudo apt-get install ffmpeg$(RESET)"; exit 1; }
-	@echo "$(CYAN)=== TTS: http://localhost:$(SERVICE_PORT)/v1/audio/speech voice=$(TTS_VOICE) ===$(RESET)"
-	@echo "$(YELLOW)Type text + Enter to speak. Ctrl+C to stop.$(RESET)"
-	@while IFS= read -r line; do \
-		[ -z "$$line" ] && continue; \
-		curl -s http://localhost:$(SERVICE_PORT)/v1/audio/speech \
-			-H 'Content-Type: application/json' \
-			-d "{\"input\":\"$$line\",\"voice\":\"$(TTS_VOICE)\",\"response_format\":\"$(TTS_FMT)\",\"stream\":false}" \
-			| ffplay -f s16le -ar 24000 -ac 1 -nodisp -autoexit -loglevel quiet -; \
-	done
+backends: sherpa  ## model-backed tests against installed models (make setup ARGS=--all first)
+	@cargo test --release --workspace -- --ignored $(ARGS)
 
+coverage: sherpa  ## line coverage over every test incl. model-backed ones; fails under $(COVERAGE)%
+	@cargo llvm-cov --workspace --quiet --ignore-filename-regex '(stt/src/main\.rs|cli/)' --fail-under-lines $(COVERAGE) --summary-only -- --include-ignored
 
+gates:  ## every vars.* a workflow reads is declared, disabled, in .github/ci.vars.example
+	@used="$$(grep -rhoE 'vars\.[A-Z_]+' .github/workflows | sed 's/vars\.//' | sort -u)"; \
+	  for gate in $$used; do grep -qE "^$$gate=false" .github/ci.vars.example || { echo "gate $$gate is undeclared or ships enabled"; exit 1; }; done; \
+	  ! grep -qE '^[A-Z_]+=true' .github/ci.vars.example && printf '\033[32mgates ok\033[0m\n'
 
-# Docker — self-contained image (API + Gradio + nginx on :80)
+release:  ## cut a release: make release BUMP=patch|minor|major (tag, GitHub release, gated images)
+	@gh workflow run release.yml -f bump=$(BUMP)
 
-docker-build:
-	@echo "$(CYAN)=== Building Docker image ===$(RESET)"
-	@docker compose -f $(COMPOSE_FILE) build
-	@echo "$(GREEN)=== Build complete ===$(RESET)"
+check: lint bounds gates test  ## the local gate
 
-docker-up: docker-build
-	@docker compose -f $(COMPOSE_FILE) up -d
-	@echo "$(GREEN)=== Running at http://localhost:$(SERVICE_PORT) (UI + API + docs) ===$(RESET)"
-
-docker-down:
-	@docker compose -f $(COMPOSE_FILE) down
-
-log:
-	@docker compose -f $(COMPOSE_FILE) logs -f
-
-
-# Cleanup
-
-clean:
-	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
-	@rm -rf dist/ build/ *.egg-info/
-	@echo "$(GREEN)=== Clean ===$(RESET)"
+%:
+	@:

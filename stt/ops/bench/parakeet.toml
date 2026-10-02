@@ -1,0 +1,4 @@
+# Parakeet TDT v3 per segment (the file default), live too.
+[stt.pipeline.asr]
+backend = "parakeet"
+offline = { backend = "live" }

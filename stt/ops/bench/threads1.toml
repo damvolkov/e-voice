@@ -1,0 +1,6 @@
+[stt.pipeline.asr]
+threads = 1
+offline = { backend = "live" }
+
+[stt.pipeline.ser]
+threads = 1

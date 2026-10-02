@@ -1,0 +1,7 @@
+# emotion2vec+ large (local export: make export) on Parakeet segments.
+[stt.pipeline.asr]
+backend = "parakeet"
+offline = { backend = "live" }
+
+[stt.pipeline.ser]
+backend = "emotion2vec-large"

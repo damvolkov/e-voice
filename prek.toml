@@ -1,0 +1,116 @@
+# Configuration file for `prek`, a git hook framework written in Rust.
+# See https://prek.j178.dev for more information.
+#:schema https://www.schemastore.org/prek.json
+
+default_install_hook_types = [
+  "pre-commit",
+  "pre-push"
+  ]
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-merge-conflict" },
+  { id = "check-toml" },
+  { id = "check-yaml" },
+  { id = "check-added-large-files" }
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "lint",
+    name = "rustfmt + clippy (warnings are errors)",
+    entry = "make -s lint",
+    language = "system",
+    types_or = [
+      "rust",
+      "toml"
+    ],
+    pass_filenames = false
+  },
+  {
+    id = "bounds",
+    name = "layer boundaries",
+    entry = "make -s bounds",
+    language = "system",
+    types = ["rust"],
+    pass_filenames = false
+  },
+  {
+    id = "test",
+    name = "unit, property and integration tests",
+    entry = "make -s test ARGS=--quiet",
+    language = "system",
+    types_or = [
+      "rust",
+      "toml"
+    ],
+    pass_filenames = false
+  },
+  {
+    id = "ruff",
+    name = "ruff check (eval)",
+    entry = "uv run --project eval ruff check --fix --exit-non-zero-on-fix eval",
+    language = "system",
+    types_or = [
+      "python",
+      "pyi"
+    ],
+    pass_filenames = false
+  },
+  {
+    id = "ruff-format",
+    name = "ruff format (eval)",
+    entry = "uv run --project eval ruff format eval",
+    language = "system",
+    types_or = [
+      "python",
+      "pyi"
+    ],
+    pass_filenames = false
+  },
+  {
+    id = "ty",
+    name = "ty type check (eval)",
+    entry = "uv run --project eval ty check eval/src",
+    language = "system",
+    types = ["python"],
+    pass_filenames = false
+  },
+  {
+    id = "pytest",
+    name = "pytest (eval)",
+    entry = "uv run --project eval pytest -q eval",
+    language = "system",
+    types = ["python"],
+    pass_filenames = false
+  },
+  {
+    id = "zizmor",
+    name = "workflow hardening scan",
+    entry = "uvx zizmor==1.30.1 --persona=regular .github/workflows",
+    language = "system",
+    files = '^\.github/workflows/.*\.ya?ml$',
+    pass_filenames = false
+  },
+  {
+    id = "coverage",
+    name = "coverage ≥ 90% with model-backed tests",
+    entry = "make -s coverage",
+    language = "system",
+    always_run = true,
+    pass_filenames = false,
+    stages = ["pre-push"]
+  }
+]
+
+[[repos]]
+repo = "https://github.com/gitleaks/gitleaks"
+rev = "v8.30.1"
+hooks = [
+  { id = "gitleaks" }
+]
