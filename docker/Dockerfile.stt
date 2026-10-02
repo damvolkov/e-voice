@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1.7
+# STT service alone (e-voice:stt, :5500).
+# Build context is the repository root. Build steps are the Makefile's: `system`, `sherpa`, `dist`.
+
+##### BASES #####
+ARG CHEF=lukemathwalker/cargo-chef:latest-rust-1.94-slim-trixie@sha256:c099c03e8a585e114631935ceb8bc7dbbfcfeed19e336feb305c9ef389030f72
+ARG RUNTIME=debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+
+##### TOOLCHAIN #####
+FROM ${CHEF} AS chef
+WORKDIR /src
+ENV CARGO_TARGET_DIR=/src/target
+COPY Makefile ./
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends make \
+ && make system \
+ && rm -rf /var/lib/apt/lists/*
+
+##### RECIPE #####
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+##### BUILD #####
+FROM chef AS builder
+ARG PACKAGES="--package e-voice-stt"
+ARG BINS="e-voice"
+COPY Cargo.lock ./
+COPY stt/ops/sherpa.sh stt/ops/sherpa.sh
+RUN make sherpa
+COPY .cargo .cargo
+COPY --from=planner /src/recipe.json recipe.json
+RUN cargo chef cook --release --locked ${PACKAGES} --recipe-path recipe.json
+COPY . .
+RUN make dist PACKAGES="${PACKAGES}" BINS="${BINS}" DIST=/out
+
+##### RUNTIME #####
+# No make or toolchain here by design: the runtime only needs certificates and an init.
+FROM ${RUNTIME}
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates tini \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --uid 10001 evoice \
+ && mkdir -p /data/stt && chown -R evoice:evoice /data
+COPY --from=builder /out/ /app/
+COPY stt/models.toml /app/stt/models.toml
+ENV PATH=/app/bin:$PATH \
+    EVOICE_STT__OPS__DATA=/data/stt \
+    EVOICE_STT__OPS__MANIFEST=/app/stt/models.toml \
+    EVOICE_SERVER__LOG__FORMAT=json
+WORKDIR /app
+USER evoice
+VOLUME ["/data/stt"]
+EXPOSE 5500
+HEALTHCHECK --interval=15s --timeout=3s --start-period=120s --retries=3 \
+  CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5500 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"ok\"' <&3"]
+ENTRYPOINT ["tini", "--", "e-voice"]
+CMD ["serve"]

@@ -1,0 +1,38 @@
+##### E-VOICE · FULL #####
+# Every service in one container on :5500. Run from the repository root:
+#   docker compose -f docker/compose.full.yml up -d      (or: make up)
+# Models live in named volumes, or host directories via EVOICE_STT_DATA / EVOICE_TTS_DATA (absolute paths).
+# Settings: environment (EVOICE_<SECTION>__<KEY>) or a mounted /app/evoice.toml.
+name: e-voice
+
+services:
+  pull:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.full
+    image: e-voice:full
+    command: ["pull"]
+    environment: &settings
+      EVOICE_STT__LANG: ${EVOICE_LANG:-es}
+    volumes: &data
+      - ${EVOICE_STT_DATA:-e-voice-stt}:/data/stt
+      - ${EVOICE_TTS_DATA:-e-voice-tts}:/data/tts
+    restart: "no"
+
+  evoice:
+    image: e-voice:full
+    depends_on:
+      pull:
+        condition: service_completed_successfully
+    environment: *settings
+    volumes: *data
+    ports:
+      - "${EVOICE_PORT:-5500}:5500"
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  e-voice-stt:
+    name: e-voice-stt
+  e-voice-tts:
+    name: e-voice-tts

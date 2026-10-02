@@ -1,0 +1,35 @@
+##### E-VOICE · STT #####
+# The STT service alone on :5500. Run from the repository root:
+#   docker compose -f docker/compose.stt.yml up -d       (or: make up MODE=stt)
+# Split deployment: add -f docker/compose.tts.yml once the TTS crate exists.
+# Models live in the `e-voice-stt` volume (shared with full), or a host directory via EVOICE_STT_DATA.
+name: e-voice
+
+services:
+  stt-pull:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.stt
+    image: e-voice:stt
+    command: ["pull"]
+    environment: &settings
+      EVOICE_STT__LANG: ${EVOICE_LANG:-es}
+    volumes: &data
+      - ${EVOICE_STT_DATA:-e-voice-stt}:/data/stt
+    restart: "no"
+
+  stt:
+    image: e-voice:stt
+    depends_on:
+      stt-pull:
+        condition: service_completed_successfully
+    environment: *settings
+    volumes: *data
+    ports:
+      - "${EVOICE_STT_PORT:-5500}:5500"
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  e-voice-stt:
+    name: e-voice-stt

@@ -1,0 +1,7 @@
+[asr]
+kind = "nemotron"
+threads = 1
+
+[ser]
+kind = "emotion2vec"
+threads = 1

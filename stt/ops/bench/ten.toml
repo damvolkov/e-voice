@@ -1,0 +1,3 @@
+[vad]
+kind = "ten"
+model = "ten-vad"

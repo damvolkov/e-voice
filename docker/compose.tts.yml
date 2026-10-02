@@ -1,0 +1,31 @@
+##### E-VOICE · TTS (TEMPLATE) #####
+# The TTS service alone on :5600 — inert until the e-voice-tts crate exists (see docker/Dockerfile.tts).
+#   docker compose -f docker/compose.tts.yml up -d                                   (alone)
+#   docker compose -f docker/compose.stt.yml -f docker/compose.tts.yml up -d         (split)
+name: e-voice
+
+services:
+  tts-pull:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.tts
+    image: e-voice:tts
+    command: ["pull"]
+    volumes: &data
+      - ${EVOICE_TTS_DATA:-e-voice-tts}:/data/tts
+    restart: "no"
+
+  tts:
+    image: e-voice:tts
+    depends_on:
+      tts-pull:
+        condition: service_completed_successfully
+    volumes: *data
+    ports:
+      - "${EVOICE_TTS_PORT:-5600}:5600"
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  e-voice-tts:
+    name: e-voice-tts

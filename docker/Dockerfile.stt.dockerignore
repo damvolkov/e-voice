@@ -1,0 +1,14 @@
+*
+!.cargo/
+!Cargo.toml
+!Cargo.lock
+!clippy.toml
+!rustfmt.toml
+!stt/Cargo.toml
+!stt/build.rs
+!stt/models.toml
+!stt/ops/sherpa.sh
+!Makefile
+!stt/src/
+!cli/Cargo.toml
+!cli/src/

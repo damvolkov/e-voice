@@ -1,0 +1,32 @@
+[project]
+name = "e-voice-eval"
+version = "0.1.0"
+description = "Datasets, scoring and reports for the e-voice benchmark"
+requires-python = ">=3.13"
+dependencies = [
+    "jiwer>=4.0",
+    "polars>=1.30",
+    "structlog>=25.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.4", "ruff>=0.14", "ty>=0.0.1a20"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/e_voice_eval"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "PL", "PERF"]
+ignore = ["PLR2004"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,58 @@
+[[model]]
+id = "silero-vad"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx", sha256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6" }]
+
+[[model]]
+id = "ten-vad"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/ten-vad.onnx", sha256 = "718cb7eef47e3cf5ddbe7e967a7503f46b8b469c0706872f494dfa921b486206" }]
+
+[[model]]
+id = "parakeet-v3-int8"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2", sha256 = "5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "nemotron-3.5-560ms-int8"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2", sha256 = "c6bf5e0df765f9d5b43bc9e0536d4b4b3e7d40bdf5ecf13e45f134c51c05ae3a", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "emotion2vec-plus-base"
+files = [
+  { url = "https://huggingface.co/pankotaro/emotion2vec-plus-base-onnx/resolve/334d4376993c381f059cc36d2c6ed05cbfec5ca1/emotion2vec_plus_base.onnx", sha256 = "a9ddcc2f4254c3da1dc2a51ea5e38df32e2a84724519e343499f05f0ea2b3506" },
+  { url = "https://huggingface.co/pankotaro/emotion2vec-plus-base-onnx/resolve/334d4376993c381f059cc36d2c6ed05cbfec5ca1/emotion2vec_head.json", sha256 = "69666ff0d2873f016f5a8187b685e32a2c419130876bf97b069c981c44cfe02c" },
+  { url = "https://huggingface.co/pankotaro/emotion2vec-plus-base-onnx/resolve/334d4376993c381f059cc36d2c6ed05cbfec5ca1/LICENSE", sha256 = "7dba975a2069691db4992b0592d70828b330d2f8a30a71450f4e152a554e84f8" },
+]
+
+[[model]]
+id = "oww-hey-jarvis"
+files = [
+  { url = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx", sha256 = "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f" },
+  { url = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx", sha256 = "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f" },
+  { url = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_jarvis_v0.1.onnx", sha256 = "94a13cfe60075b132f6a472e7e462e8123ee70861bc3fb58434a73712ee0d2cb" },
+]
+
+[[model]]
+id = "piper-en-amy-low"
+scope = "ops"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low.tar.bz2", sha256 = "c70f5284a09a7fd4ed203b39b2ff51cac1432b422b852eb647b481dade3cf639", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "nemotron-3.5-160ms-int8"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-160ms-int8-2026-06-11.tar.bz2", sha256 = "a81909a1780d84cff16d73c15e13e67d9d81d8839faf14870d507d8499f7a61a", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "nemotron-3.5-1120ms-int8"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-1120ms-int8-2026-06-11.tar.bz2", sha256 = "adbdd5e9fef87300c37cebfcfc4f1ebe56845c860c8a760af0a1dd65ce9beed3", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "kws-gigaspeech"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2", sha256 = "f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "piper-en-lessac-medium"
+scope = "ops"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-medium.tar.bz2", sha256 = "9e3febfacf0abf4270172d2958bcec246032b7e88efc2720840cc80c93de334e", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "piper-en-ryan-medium"
+scope = "ops"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ryan-medium.tar.bz2", sha256 = "c546af78b6395b4e7c4ce1ed899438b64426a362f5d4ec5fecd090ded9ad7505", unpack = "tar.bz2", strip = 1 }]

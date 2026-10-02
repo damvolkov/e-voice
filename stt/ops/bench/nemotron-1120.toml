@@ -1,0 +1,3 @@
+[asr]
+kind = "nemotron"
+model = "nemotron-3.5-1120ms-int8"
