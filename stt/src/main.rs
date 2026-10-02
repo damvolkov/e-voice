@@ -3,6 +3,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
+use e_voice_stt::api::docs::ApiDoc;
 use e_voice_stt::api::server::{Server, ServerError};
 use e_voice_stt::config::ops::ModelsVerify;
 use e_voice_stt::core::logger::{Logger, LoggerError};
@@ -15,6 +16,7 @@ use e_voice_stt::ops::wake::{Wake, WakeError};
 use e_voice_stt::schema::error::BackendError;
 use e_voice_stt::workflow::nodes::{Nodes, NodesError};
 use e_voice_stt::workflow::runner::Runner;
+use utoipa::OpenApi;
 
 #[derive(Debug, thiserror::Error)]
 enum MainError {
@@ -38,6 +40,8 @@ enum MainError {
     Wake(#[from] WakeError),
     #[error(transparent)]
     Backend(#[from] BackendError),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }
 
 #[derive(Debug, Subcommand)]
@@ -80,11 +84,13 @@ enum CliCommand {
         #[arg(long)]
         full: bool,
     },
+    /// Print the `OpenAPI` document of the HTTP and WebSocket surface (what `/openapi.json` serves).
+    Openapi,
 }
 
 /// CPU-first, OpenAI-compatible speech service.
 #[derive(Debug, Parser)]
-#[command(version)]
+#[command(version = env!("E_VOICE_VERSION"))]
 struct Cli {
     /// Settings file; without it, `evoice.toml` is read if present.
     #[arg(long, global = true)]
@@ -94,6 +100,54 @@ struct Cli {
 }
 
 impl Cli {
+    // ##### PRIVATE #####
+
+    /// Sweeps a kws phrase and prints the trials, the pick and its config block.
+    fn run_wake(store: &ModelStore, settings: &Settings, phrase: &str, limit: usize) -> Result<(), MainError> {
+        let wake = Wake::prepare(store, phrase, &Wake::manifests(&settings.stt.ops.data), limit)?;
+        tracing::info!(
+            phrase,
+            positives = wake.positives(),
+            negative_s = wake.negative_s,
+            "wake.sweep"
+        );
+        let mut trials = wake.sweep()?;
+        trials.sort_by(|a, b| {
+            b.recall
+                .total_cmp(&a.recall)
+                .then(a.false_accepts.cmp(&b.false_accepts))
+        });
+        println!("threshold  boost  recall  false accepts  per hour");
+        for trial in trials.iter().take(12) {
+            println!(
+                "{:>9.2}  {:>5.1}  {:>6.2}  {:>13}  {:>8.2}",
+                trial.threshold, trial.boost, trial.recall, trial.false_accepts, trial.per_hour
+            );
+        }
+        if let Some(best) = Wake::pick(&trials) {
+            let voices: Vec<String> = best
+                .voices
+                .iter()
+                .map(|(voice, rate)| format!("{voice} {:.0}%", rate * 100.0))
+                .collect();
+            println!("\nrecall per voice: {}", voices.join(" · "));
+            println!(
+                "\n[stt.pipeline.ww]\nbackend = \"kws\"\nkeyword = \"{phrase}\"\nthreshold = {}\nboost = {}\n# recall {:.0}% on {} synthetic utterances · {} false accepts in {:.0} min of other speech",
+                best.threshold,
+                best.boost,
+                best.recall * 100.0,
+                wake.positives(),
+                best.false_accepts,
+                wake.negative_s / 60.0
+            );
+        }
+        Ok(())
+    }
+
+    // ##########################################################
+
+    // ##### PUBLIC #####
+
     async fn run(self) -> Result<(), MainError> {
         let settings = Settings::load(self.config.as_deref())?;
         let _logger = Logger::init(&settings.server.log)?;
@@ -107,45 +161,7 @@ impl Cli {
         let store = ModelStore::open(&settings.stt.ops)?;
         match self.command {
             CliCommand::Serve => Server::serve(&settings).await?,
-            CliCommand::Wake { phrase, limit } => {
-                let wake = Wake::prepare(&store, &phrase, &Wake::manifests(&settings.stt.ops.data), limit)?;
-                tracing::info!(
-                    phrase,
-                    positives = wake.positives(),
-                    negative_s = wake.negative_s,
-                    "wake.sweep"
-                );
-                let mut trials = wake.sweep()?;
-                trials.sort_by(|a, b| {
-                    b.recall
-                        .total_cmp(&a.recall)
-                        .then(a.false_accepts.cmp(&b.false_accepts))
-                });
-                println!("threshold  boost  recall  false accepts  per hour");
-                for trial in trials.iter().take(12) {
-                    println!(
-                        "{:>9.2}  {:>5.1}  {:>6.2}  {:>13}  {:>8.2}",
-                        trial.threshold, trial.boost, trial.recall, trial.false_accepts, trial.per_hour
-                    );
-                }
-                if let Some(best) = Wake::pick(&trials) {
-                    let voices: Vec<String> = best
-                        .voices
-                        .iter()
-                        .map(|(voice, rate)| format!("{voice} {:.0}%", rate * 100.0))
-                        .collect();
-                    println!("\nrecall per voice: {}", voices.join(" · "));
-                    println!(
-                        "\n[stt.pipeline.ww]\nbackend = \"kws\"\nkeyword = \"{phrase}\"\nthreshold = {}\nboost = {}\n# recall {:.0}% on {} synthetic utterances · {} false accepts in {:.0} min of other speech",
-                        best.threshold,
-                        best.boost,
-                        best.recall * 100.0,
-                        wake.positives(),
-                        best.false_accepts,
-                        wake.negative_s / 60.0
-                    );
-                }
-            }
+            CliCommand::Wake { phrase, limit } => Self::run_wake(&store, &settings, &phrase, limit)?,
             CliCommand::Bench {
                 manifest,
                 out,
@@ -180,6 +196,9 @@ impl Cli {
                     (true, false) => settings.models(),
                 };
                 store.pull(&ids).await?;
+            }
+            CliCommand::Openapi => {
+                println!("{}", ApiDoc::openapi().to_pretty_json()?);
             }
             CliCommand::Verify { ids, full } => {
                 let mode = if full {

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use e_voice_stt::config::asr::AsrConfig;
-use e_voice_stt::config::ser::SerConfig;
+use e_voice_stt::config::ser::{SerBackend, SerConfig};
 use e_voice_stt::schema::emotion::EmotionLabel;
 use e_voice_stt::schema::lang::Lang;
 use e_voice_stt::workflow::asr::registry::{AsrBackend, AsrRegistry};
@@ -64,4 +64,19 @@ fn test_shares_onnxruntime_with_sherpa() {
     let emotion = ser.classify(&audio).unwrap();
     assert!(session.finish().unwrap().contains("por tu país"));
     assert_ne!(emotion.scores.get(&EmotionLabel::Neutral), None);
+}
+
+#[test]
+#[ignore = "requires the local export: make export"]
+fn test_large_runs_its_1024_dim_head_on_the_same_pipeline() {
+    let config = SerConfig {
+        backend: SerBackend::Emotion2vecLarge,
+        ..SerConfig::default()
+    };
+    let large = SerRegistry::build(&config, &fixture::store()).unwrap().unwrap();
+    let emotion = large.classify(&fixture::wav("parakeet-v3-int8", "en.wav")).unwrap();
+    assert_eq!(emotion.scores.len(), 9);
+    assert!((emotion.scores.values().sum::<f32>() - 1.0).abs() < 1e-4, "{emotion:?}");
+    assert_eq!(emotion.model.as_deref(), Some("emotion2vec-plus-large"));
+    assert_ne!(emotion.label, EmotionLabel::Unknown);
 }

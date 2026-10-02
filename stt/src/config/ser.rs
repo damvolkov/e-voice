@@ -6,8 +6,12 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 pub enum SerBackend {
     Off,
+    /// emotion2vec+ base (768-dim backbone, published ONNX).
     #[default]
     Emotion2vec,
+    /// emotion2vec+ large (1024-dim backbone), exported locally with `make export`.
+    #[serde(rename = "emotion2vec-large")]
+    Emotion2vecLarge,
 }
 
 /// Speech emotion recognition; `off` makes every segment's emotion `unknown`. `deadline` counts from
@@ -40,6 +44,7 @@ impl SerConfig {
         match self.backend {
             SerBackend::Off => None,
             SerBackend::Emotion2vec => Some("emotion2vec-plus-base"),
+            SerBackend::Emotion2vecLarge => Some("emotion2vec-plus-large"),
         }
     }
 }

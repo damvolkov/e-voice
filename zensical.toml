@@ -1,0 +1,100 @@
+[project]
+site_name = "e-voice"
+site_description = "CPU-first speech service in Rust: streaming STT with emotion, behind OpenAI, Deepgram and ElevenLabs compatible APIs."
+site_url = "https://damvolkov.github.io/e-voice/"
+site_dir = "data/ops/site"
+repo_url = "https://github.com/damvolkov/e-voice"
+repo_name = "damvolkov/e-voice"
+edit_uri = "edit/main/docs/"
+copyright = "MIT · e-voice, part of the eager (e-) series"
+nav = [
+  { "Overview" = "index.md" },
+  { "Guide" = [
+    { "Install" = "guide/install.md" },
+    { "Docker" = "guide/docker.md" },
+    { "Configuration" = "guide/configuration.md" },
+    { "Clients" = "guide/clients.md" },
+    { "Wake word" = "guide/wake.md" },
+  ] },
+  { "API" = [
+    { "Protocols" = "api/index.md" },
+    { "Native stream" = "api/native.md" },
+    { "OpenAI" = "api/openai.md" },
+    { "Deepgram" = "api/deepgram.md" },
+    { "ElevenLabs" = "api/elevenlabs.md" },
+    { "Reference" = "api/reference.md" },
+  ] },
+  { "Architecture" = "architecture.md" },
+  { "Backends" = "backends.md" },
+  { "Models" = "models.md" },
+  { "Benchmark" = "benchmark.md" },
+  { "Development" = "development.md" },
+  { "History" = [
+    { "2026-10 · backends benchmark" = "history/2026-10-backends/index.md" },
+    { "2026-10 · CPU benchmark" = "history/2026-10-benchmark.md" },
+  ] },
+]
+
+[project.theme]
+language = "en"
+logo = "assets/e-voice.svg"
+favicon = "assets/e-voice.svg"
+features = [
+  "content.action.edit",
+  "content.code.annotate",
+  "content.code.copy",
+  "content.tabs.link",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.path",
+  "navigation.sections",
+  "navigation.tabs",
+  "navigation.top",
+  "navigation.tracking",
+  "search.highlight",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
+
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.betterem = {}
+pymdownx.details = {}
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.magiclink = {}
+pymdownx.snippets.base_path = ["."]
+pymdownx.snippets.check_paths = true
+pymdownx.superfences.custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+pymdownx.tabbed.alternate_style = true
+pymdownx.tasklist.custom_checkbox = true

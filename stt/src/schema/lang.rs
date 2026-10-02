@@ -10,6 +10,17 @@ pub enum Lang {
 }
 
 impl Lang {
+    pub const ALL: [Self; 2] = [Self::Es, Self::En];
+
+    /// ISO-639-1 code.
+    #[must_use]
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Es => "es",
+            Self::En => "en",
+        }
+    }
+
     /// English name, as reported by `verbose_json` transcriptions.
     #[must_use]
     pub const fn name(self) -> &'static str {

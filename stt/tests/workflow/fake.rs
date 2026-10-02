@@ -10,6 +10,8 @@ use e_voice_stt::schema::lang::Lang;
 use e_voice_stt::schema::segment::SegmentSpan;
 use e_voice_stt::workflow::asr::base::{AsrSession, BatchAsr, StreamingAsr};
 use e_voice_stt::workflow::asr::registry::AsrBackend;
+use e_voice_stt::workflow::denoise::base::{Denoise, DenoiseSession};
+use e_voice_stt::workflow::lid::base::Lid;
 use e_voice_stt::workflow::nodes::Nodes;
 use e_voice_stt::workflow::ser::base::Ser;
 use e_voice_stt::workflow::vad::base::{Vad, VadEvent, VadSession};
@@ -105,6 +107,16 @@ impl BatchAsr for FakeBatch {
     }
 }
 
+/// A batch engine that answers `"<name>:<samples>"`, to tell engines apart.
+#[derive(Debug)]
+pub struct FakeNamed(pub &'static str);
+
+impl BatchAsr for FakeNamed {
+    fn transcribe(&self, _lang: Lang, audio: &[f32]) -> Result<String, NodeError> {
+        Ok(format!("{}:{}", self.0, audio.len()))
+    }
+}
+
 #[derive(Debug)]
 pub struct FakeSer {
     pub delay: Duration,
@@ -141,22 +153,75 @@ impl WwSession for FakeWwSession {
     }
 }
 
+/// Identifies English in segments of at least `english` samples, nothing in shorter ones.
+#[derive(Debug)]
+pub struct FakeLid {
+    pub english: usize,
+}
+
+impl Lid for FakeLid {
+    fn identify(&self, audio: &[f32]) -> Result<Option<Lang>, NodeError> {
+        Ok((audio.len() >= self.english).then_some(Lang::En))
+    }
+}
+
+/// Scales every sample by `gain` and holds back the last `hold` samples until flushed.
+#[derive(Debug)]
+pub struct FakeDenoise {
+    pub gain: f32,
+    pub hold: usize,
+}
+
+struct FakeDenoiseSession {
+    gain: f32,
+    hold: usize,
+    held: Vec<f32>,
+}
+
+impl Denoise for FakeDenoise {
+    fn open(&self) -> Result<Box<dyn DenoiseSession>, BackendError> {
+        Ok(Box::new(FakeDenoiseSession {
+            gain: self.gain,
+            hold: self.hold,
+            held: Vec::new(),
+        }))
+    }
+}
+
+impl DenoiseSession for FakeDenoiseSession {
+    fn push(&mut self, audio: &[f32]) -> Vec<f32> {
+        self.held.extend(audio.iter().map(|sample| sample * self.gain));
+        let ready = self.held.len().saturating_sub(self.hold);
+        self.held.drain(..ready).collect()
+    }
+
+    fn flush(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.held)
+    }
+}
+
 pub fn nodes(asr: AsrBackend, ser: Option<Arc<dyn Ser>>, ww: Option<Arc<dyn Ww>>) -> Arc<Nodes> {
     Arc::new(Nodes {
+        denoise: None,
         ww,
         vad: Arc::new(FakeVad),
+        lid: None,
         asr,
         offline: None,
+        extra: Vec::new(),
         ser,
     })
 }
 
 pub fn stratified(live: AsrBackend, offline: AsrBackend) -> Arc<Nodes> {
     Arc::new(Nodes {
+        denoise: None,
         ww: None,
         vad: Arc::new(FakeVad),
+        lid: None,
         asr: live,
         offline: Some(offline),
+        extra: Vec::new(),
         ser: None,
     })
 }

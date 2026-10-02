@@ -14,7 +14,9 @@ use e_voice_stt::workflow::runner::{Runner, RunnerIntake};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::fake::{FakeStreaming, FakeWw, MARKER, SPEECH, batch, nodes, ser, slow, stratified};
+use crate::fake::{
+    FakeDenoise, FakeLid, FakeNamed, FakeStreaming, FakeWw, MARKER, SPEECH, batch, nodes, ser, slow, stratified,
+};
 
 fn config() -> PipelineConfig {
     PipelineConfig {
@@ -264,4 +266,59 @@ async fn test_files_use_the_offline_asr_and_streams_the_live_one() {
     let live = drive_with(Runner::new(nodes, config()), signal, None, RunnerIntake::Live).await;
     assert_eq!(finals(&file)[0].text, "batch:4000");
     assert!(finals(&live)[0].text.starts_with("Es:"), "{live:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_identified_language_reaches_the_final_of_long_enough_segments() {
+    let mut built = nodes(batch(0), None, None);
+    Arc::get_mut(&mut built).unwrap().lid = Some(Arc::new(FakeLid { english: 6_000 }));
+    let mut settings = config();
+    settings.lid.min = Duration::from_millis(250);
+    let signal = audio(&[
+        (0.0, 1_600),
+        (SPEECH, 8_000),
+        (0.0, 4_000),
+        (SPEECH, 4_400),
+        (0.0, 1_600),
+    ]);
+    let events = drive(Runner::new(built, settings), signal, None).await;
+    let langs: Vec<Lang> = finals(&events).iter().map(|done| done.lang).collect();
+    assert_eq!(langs, [Lang::En, Lang::Es]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_denoise_runs_before_vad_and_flushes_its_tail() {
+    let denoised = |gain: f32| {
+        let mut built = nodes(batch(0), None, None);
+        Arc::get_mut(&mut built).unwrap().denoise = Some(Arc::new(FakeDenoise { gain, hold: 800 }));
+        Runner::new(built, config())
+    };
+    let signal = audio(&[(0.0, 1_600), (SPEECH, 8_000)]);
+    let kept = drive(denoised(1.0), signal.clone(), None).await;
+    assert_eq!(
+        finals(&kept).iter().map(|done| done.text.as_str()).collect::<Vec<_>>(),
+        ["batch:8000"]
+    );
+    let quiet = drive(denoised(0.5), signal, None).await;
+    assert!(finals(&quiet).is_empty(), "{quiet:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_engine_swaps_the_file_backend_only_for_loaded_engines() {
+    use e_voice_stt::config::asr::AsrEngine;
+
+    let mut built = stratified(AsrBackend::Streaming(Arc::new(FakeStreaming)), batch(0));
+    Arc::get_mut(&mut built).unwrap().extra =
+        vec![(AsrEngine::Canary, AsrBackend::Batch(Arc::new(FakeNamed("canary"))))];
+    let runner = Runner::new(built, config());
+    let signal = audio(&[(0.0, 1_600), (SPEECH, 8_000), (0.0, 4_000)]);
+    let text = |transcript: e_voice_stt::schema::transcript::Transcript| transcript.text(false);
+    let default = runner.engine(AsrEngine::Parakeet).unwrap();
+    assert_eq!(
+        text(default.transcribe(Lang::Es, signal.clone()).await.unwrap()),
+        "batch:8000"
+    );
+    let canary = runner.engine(AsrEngine::Canary).unwrap();
+    assert_eq!(text(canary.transcribe(Lang::Es, signal).await.unwrap()), "canary:8000");
+    assert!(runner.engine(AsrEngine::Cohere).is_none());
 }

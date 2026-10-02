@@ -9,7 +9,7 @@ use crate::api::state::AppState;
 #[openapi(
     info(
         title = "e-voice",
-        description = "CPU-first speech-to-text. One pipeline (wake word → VAD → ASR ∥ SER) behind native, OpenAI, Deepgram and ElevenLabs compatible endpoints. Emotion is an extension every endpoint can drop with `emotion=off`.",
+        description = "CPU-first speech-to-text. One pipeline (denoise → wake word → VAD → language ID → ASR ∥ SER) behind native, OpenAI, Deepgram and ElevenLabs compatible endpoints. Uploads pick a loaded engine through their model field (`/v1/models` lists them). Emotion is an extension every endpoint can drop with `emotion=off`.",
         license(name = "MIT")
     ),
     paths(

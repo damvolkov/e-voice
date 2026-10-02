@@ -103,6 +103,7 @@ fn input(op: &Op, cursor: &mut u64) -> SessionInput {
             result: ok
                 .then(|| "hola mundo".to_owned())
                 .ok_or_else(|| NodeError::Backend("boom".into())),
+            lang: None,
         },
         Op::Emotion(id, ok) => SessionInput::Emotion {
             segment: SegmentId(*id),
@@ -286,6 +287,7 @@ fn test_finals_wait_for_earlier_segments() {
         SessionInput::Transcript {
             segment: SegmentId(1),
             result: Ok("second".into()),
+            lang: None,
         },
     );
     session.step(
@@ -301,6 +303,7 @@ fn test_finals_wait_for_earlier_segments() {
         SessionInput::Transcript {
             segment: SegmentId(0),
             result: Ok("first".into()),
+            lang: None,
         },
     );
     session.step(
@@ -330,6 +333,7 @@ fn test_late_ser_falls_back_to_unknown_without_error() {
         SessionInput::Transcript {
             segment: SegmentId(0),
             result: Ok("hola".into()),
+            lang: None,
         },
     );
     session.step(ms(600), SessionInput::Tick);

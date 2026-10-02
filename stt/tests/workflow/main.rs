@@ -10,8 +10,10 @@
 )]
 
 mod asr;
+mod denoise;
 mod fake;
 mod fixture;
+mod lid;
 mod pipeline;
 mod runner;
 mod ser;

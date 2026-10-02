@@ -1,0 +1,3 @@
+[stt.pipeline.asr]
+backend = "whisper"
+offline = { backend = "live" }

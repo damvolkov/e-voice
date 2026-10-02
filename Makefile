@@ -3,7 +3,9 @@ MAKEFLAGS += --no-print-directory
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
 SHELL := bash
 PREK_VERSION ?= 0.5.4
+ZENSICAL_VERSION ?= 0.0.67
 COVERAGE ?= 90
+BUMP ?= patch
 CONFIG ?=
 CONFIGURED = $(if $(CONFIG),--config $(CONFIG))
 WORD ?= hey eager
@@ -23,7 +25,7 @@ HOST_MSYS = windows
 HOST_CYGWIN = windows
 PLATFORM = $(or $(filter ubuntu mac windows,$(OS)),$(HOST_$(KERNEL)))
 ARGS = $(filter-out $(firstword $(MAKECMDGOALS)),$(MAKECMDGOALS))
-.PHONY: help install system system-ubuntu system-mac system-windows toolchain tools hooks coverage sherpa setup dist wake datasets bench report serve stt image up down build fmt lint bounds test backends check
+.PHONY: help install system system-ubuntu system-mac system-windows toolchain tools hooks coverage sherpa setup export annex gates release dist docs docs-serve wake datasets bench report serve stt image up down build fmt lint bounds test backends check
 
 help:  ## list targets
 	@awk 'BEGIN{FS=":.*##"} /^[a-z][a-zA-Z0-9_-]*:.*##/{printf "  \033[32m%-9s\033[0m %s\n",$$1,$$2}' $(MAKEFILE_LIST)
@@ -69,6 +71,10 @@ wake:  ## calibrate a kws wake phrase: make wake WORD="eager" (prints the [stt.p
 	@cargo run -q --release -p e-voice-stt -- pull kws-gigaspeech piper-en-amy-low piper-en-lessac-medium piper-en-ryan-medium
 	@cargo run -q --release -p e-voice-stt -- $(CONFIGURED) wake "$(WORD)" $(ARGS)
 
+export:  ## export models without a published ONNX (emotion2vec+ large) into data/stt/ops/exports, then install them
+	@uv run -q --script eval/export/emotion2vec.py --out data/stt/ops/exports/emotion2vec-plus-large
+	@cargo run -q --release -p e-voice-stt -- pull emotion2vec-plus-large
+
 datasets:  ## fetch the pinned evaluation sets into data/stt/ops/datasets
 	@cd eval && for set in "fleurs-es 200" "fleurs-en 200" "mesd" "crema 400"; do set -- $$set; uv run -q python -m e_voice_eval fetch $$1 $${2:+--limit $$2}; done
 
@@ -78,11 +84,22 @@ bench: build  ## run the benchmark matrix (stt/ops/bench/*.toml × datasets) [co
 report:  ## compare every results file in data/stt/ops/results
 	@cd eval && uv run -q python -m e_voice_eval report ../data/stt/ops/results/*.jsonl --out ../data/stt/ops/results/report.md
 
+annex:  ## benchmark annex (table, CSV, charts) of every results file: make annex OUT=docs/history/<date>-<topic>
+	@cd eval && uv run -q python -m e_voice_eval annex ../data/stt/ops/results/*.jsonl --out ../$(OUT)
+
 serve: sherpa  ## run the gateway (release) [args forwarded]
 	@cargo run -q --release -p e-voice-stt -- $(CONFIGURED) serve $(ARGS)
 
 stt:  ## live mic transcription: make stt ARGS="--flat | --struct [--lang es]"
 	@cargo run -q --release -p ecli -- stt $(ARGS)
+
+docs:  ## the OpenAPI document, then the documentation site into data/ops/site
+	@cargo run -q --release -p e-voice-stt -- openapi > docs/api/openapi.json
+	@uvx zensical==$(ZENSICAL_VERSION) build --clean
+
+docs-serve:  ## live documentation preview on :8000
+	@cargo run -q --release -p e-voice-stt -- openapi > docs/api/openapi.json
+	@uvx zensical==$(ZENSICAL_VERSION) serve
 
 image:  ## build the runtime image(s): MODE=full (default) | stt | tts | split → e-voice:<mode>
 	@docker compose $(COMPOSE) build
@@ -110,7 +127,7 @@ bounds:  ## inner layers never import outer ones
 	@! grep -rnE 'crate::(core|workflow|api|ops)' stt/src/config \
 	  && ! grep -rnE 'crate::(workflow|core|config|api|ops)' stt/src/schema \
 	  && ! grep -rnE 'crate::(api|ops)' stt/src/workflow stt/src/core \
-	  && for node in ww vad asr ser; do ! grep -rnE "crate::workflow::($$(echo ww vad asr ser | tr ' ' '\n' | grep -vx $$node | paste -sd'|'))::" stt/src/workflow/$$node || exit 1; done \
+	  && for node in denoise ww vad lid asr ser; do ! grep -rnE "crate::workflow::($$(echo denoise ww vad lid asr ser | tr ' ' '\n' | grep -vx $$node | paste -sd'|'))::" stt/src/workflow/$$node || exit 1; done \
 	  && printf '\033[32mbounds ok\033[0m\n'
 
 test: sherpa  ## unit, property and integration tests [args forwarded]
@@ -122,7 +139,15 @@ backends: sherpa  ## model-backed tests against installed models (make setup ARG
 coverage: sherpa  ## line coverage over every test incl. model-backed ones; fails under $(COVERAGE)%
 	@cargo llvm-cov --workspace --quiet --ignore-filename-regex '(stt/src/main\.rs|cli/)' --fail-under-lines $(COVERAGE) --summary-only -- --include-ignored
 
-check: lint bounds test  ## the local gate
+gates:  ## every vars.* a workflow reads is declared, disabled, in .github/ci.vars.example
+	@used="$$(grep -rhoE 'vars\.[A-Z_]+' .github/workflows | sed 's/vars\.//' | sort -u)"; \
+	  for gate in $$used; do grep -qE "^$$gate=false" .github/ci.vars.example || { echo "gate $$gate is undeclared or ships enabled"; exit 1; }; done; \
+	  ! grep -qE '^[A-Z_]+=true' .github/ci.vars.example && printf '\033[32mgates ok\033[0m\n'
+
+release:  ## cut a release: make release BUMP=patch|minor|major (tag, GitHub release, gated images)
+	@gh workflow run release.yml -f bump=$(BUMP)
+
+check: lint bounds gates test  ## the local gate
 
 %:
 	@:

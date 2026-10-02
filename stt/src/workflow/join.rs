@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::schema::emotion::Emotion;
 use crate::schema::error::NodeError;
+use crate::schema::lang::Lang;
 use crate::schema::segment::{SegmentId, SegmentSpan};
 
 /// Lifecycle of one node's result for one segment: nodes resolve only what was requested, the first settlement wins.
@@ -53,6 +54,8 @@ pub struct Slot {
     pub dropped: bool,
     pub asr: Branch<String>,
     pub ser: Branch<Emotion>,
+    /// Language identified for this segment, when it differs from the stream's.
+    pub lang: Option<Lang>,
 }
 
 impl Slot {
@@ -113,6 +116,7 @@ impl Join {
             dropped,
             asr: Branch::Waiting,
             ser: Branch::Waiting,
+            lang: None,
         });
         id
     }

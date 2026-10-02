@@ -1,0 +1,6 @@
+# GTCRN speech enhancement in front of gain and VAD.
+[stt.pipeline.denoise]
+backend = "gtcrn"
+
+[stt.pipeline.asr]
+offline = { backend = "live" }

@@ -1,0 +1,4 @@
+# Kroko streaming zipformers (CC-BY-SA community models): measured, never a default.
+[stt.pipeline.asr]
+backend = "kroko"
+offline = { backend = "live" }

@@ -1,4 +1,6 @@
 pub mod asr;
+pub mod denoise;
+pub mod lid;
 pub mod log;
 pub mod ops;
 pub mod pipeline;

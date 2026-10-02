@@ -38,7 +38,8 @@ pub async fn transcriptions(State(state): State<AppState>, multipart: Multipart)
     tracing::info!(lang = ?form.lang, model = ?form.model, format = ?form.format, stream = form.stream, "openai.transcription");
     let (lang, tags) = (form.lang, form.emotion.tags());
     if form.stream {
-        let (events, seconds) = Batch::stream(&state, form.file.to_vec(), form.extension, lang).await?;
+        let (events, seconds) =
+            Batch::stream(&state, form.model.as_deref(), form.file.to_vec(), form.extension, lang).await?;
         let deltas = stream::unfold(
             (events, String::new(), false),
             move |(mut events, mut text, done)| async move {
@@ -72,6 +73,6 @@ pub async fn transcriptions(State(state): State<AppState>, multipart: Multipart)
         );
         return Ok(Sse::new(deltas).keep_alive(KeepAlive::default()).into_response());
     }
-    let transcript = Batch::transcribe(&state, form.file.to_vec(), form.extension, lang).await?;
+    let transcript = Batch::transcribe(&state, form.model.as_deref(), form.file.to_vec(), form.extension, lang).await?;
     Ok(form.format.render(&transcript, form.emotion))
 }

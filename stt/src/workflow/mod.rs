@@ -1,7 +1,10 @@
 pub mod asr;
+pub mod denoise;
 pub mod gate;
 pub mod join;
+pub mod lid;
 pub mod nodes;
+pub mod parts;
 pub mod runner;
 pub mod ser;
 pub mod session;

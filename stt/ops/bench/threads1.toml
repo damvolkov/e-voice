@@ -1,7 +1,6 @@
-[asr]
-kind = "nemotron"
+[stt.pipeline.asr]
 threads = 1
+offline = { backend = "live" }
 
-[ser]
-kind = "emotion2vec"
+[stt.pipeline.ser]
 threads = 1

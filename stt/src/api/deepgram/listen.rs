@@ -40,7 +40,7 @@ impl IntoResponse for DeepgramError {
 impl From<BatchError> for DeepgramError {
     fn from(error: BatchError) -> Self {
         match error {
-            BatchError::Decode(message) => Self {
+            BatchError::Decode(message) | BatchError::Model(message) => Self {
                 status: StatusCode::BAD_REQUEST,
                 message,
             },
@@ -57,7 +57,8 @@ impl From<BatchError> for DeepgramError {
 #[derive(Debug, Default, Deserialize, IntoParams)]
 #[serde(default)]
 pub struct ListenQuery {
-    /// Accepted for compatibility.
+    /// A loaded engine name or model id selects it (prerecorded); any other value (`nova-2`) uses the
+    /// default.
     pub model: Option<String>,
     /// `es` or `en` (regions such as `es-419` are accepted).
     pub language: Option<String>,
@@ -297,7 +298,7 @@ pub async fn prerecorded(
                 .unwrap_or_default()
                 .to_owned()
         });
-    let transcript = Batch::transcribe(&state, body.to_vec(), extension, lang).await?;
+    let transcript = Batch::transcribe(&state, query.model.as_deref(), body.to_vec(), extension, lang).await?;
     let model = query
         .model
         .clone()

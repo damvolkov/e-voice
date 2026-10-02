@@ -1,3 +1,4 @@
-[asr]
-kind = "nemotron"
-model = "nemotron-3.5-160ms-int8"
+[stt.pipeline.asr]
+backend = "nemotron"
+chunk = "160ms"
+offline = { backend = "live" }

@@ -1,2 +1,5 @@
-[ser]
-kind = "disabled"
+[stt.pipeline.ser]
+backend = "off"
+
+[stt.pipeline.asr]
+offline = { backend = "live" }

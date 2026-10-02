@@ -10,9 +10,9 @@ use serde::Deserialize;
 use crate::core::runtime::Runtime;
 use crate::schema::emotion::{Emotion, EmotionLabel};
 use crate::schema::error::{BackendError, NodeError};
+use crate::workflow::parts::Parts;
 use crate::workflow::ser::base::Ser;
 
-const BACKBONE: &str = "emotion2vec_plus_base.onnx";
 const HEAD: &str = "emotion2vec_head.json";
 const MIN: usize = 1_600;
 
@@ -97,15 +97,11 @@ impl Emotion2vecSer {
     /// # Errors
     /// Missing files, a malformed head, or onnxruntime rejecting the backbone.
     pub fn new(dir: &Path, threads: u16, model: &str) -> Result<Self, BackendError> {
-        let (backbone, head) = (dir.join(BACKBONE), dir.join(HEAD));
+        let (backbone, head) = (std::path::PathBuf::from(Parts::onnx(dir, "")?), dir.join(HEAD));
         Runtime::probe().map_err(|_| BackendError::Load("onnxruntime"))?;
         let raw = std::fs::read(&head).map_err(|_| BackendError::Missing(head.clone()))?;
         let head: Head = serde_json::from_slice(&raw).map_err(|_| BackendError::Load("emotion2vec head"))?;
         let dim = head.dim().ok_or(BackendError::Load("emotion2vec head"))?;
-        backbone
-            .is_file()
-            .then_some(())
-            .ok_or_else(|| BackendError::Missing(backbone.clone()))?;
         let load = |_| BackendError::Load("emotion2vec backbone");
         let session = Session::builder()
             .map_err(load)?

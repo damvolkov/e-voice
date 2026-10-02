@@ -18,19 +18,22 @@
 
 ---
 
-One pipeline, every node swappable from config:
+One pipeline, every node swappable from config. Full documentation:
+**[damvolkov.github.io/e-voice](https://damvolkov.github.io/e-voice/)** (built locally with `make docs`).
 
 ```
-audio ─▶ AGC ─▶ [ww] ─▶ VAD ─▶ ASR (streaming partials) ─┬─▶ join ─▶ final {text, emotion}
-                                                         └─▶ SER ─┘
+audio ─▶ [denoise] ─▶ AGC ─▶ [ww] ─▶ VAD ─▶ [lid] ─▶ ASR (streaming partials) ─┬─▶ join ─▶ final {text, lang, emotion}
+                                                                               └─▶ SER ─┘
 ```
 
 | Node | Backends | Runtime |
 |---|---|---|
-| ww | `kws` (open-vocabulary keyword spotting, default phrase `hey eager`), `oww` (openWakeWord) | sherpa-onnx · `ort` |
+| denoise | `off` (default), `gtcrn` | sherpa-onnx |
+| ww | `off` (default), `kws` (open vocabulary, phrase `hey eager`), `oww` (openWakeWord) | sherpa-onnx · `ort` |
 | vad | `silero` (default), `ten` | sherpa-onnx |
-| asr | `nemotron` 3.5 streaming (live default), `parakeet` TDT v3 (file default) | sherpa-onnx |
-| ser | `emotion2vec` plus base (default), `off` | `ort` |
+| lid | `off` (default), `whisper` (tiny) | sherpa-onnx |
+| asr | streaming: `nemotron` 3.5 (live default), `kroko` (CC-BY-SA, research only) · per segment: `parakeet` TDT v3 (file default), `canary` 180M flash, `cohere` Transcribe, `whisper` turbo | sherpa-onnx |
+| ser | `emotion2vec` plus base (default), `emotion2vec-large` (local export), `off` | `ort` |
 
 Spanish and English; sherpa-onnx and `ort` share one `libonnxruntime.so`; no GPU.
 

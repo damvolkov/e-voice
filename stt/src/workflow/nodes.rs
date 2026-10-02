@@ -1,10 +1,15 @@
 use std::sync::Arc;
 
+use crate::config::asr::AsrEngine;
 use crate::core::models::{ModelError, ModelStore};
 use crate::core::runtime::{Runtime, RuntimeError};
 use crate::core::settings::Settings;
 use crate::schema::error::BackendError;
 use crate::workflow::asr::registry::{AsrBackend, AsrRegistry};
+use crate::workflow::denoise::base::Denoise;
+use crate::workflow::denoise::registry::DenoiseRegistry;
+use crate::workflow::lid::base::Lid;
+use crate::workflow::lid::registry::LidRegistry;
 use crate::workflow::ser::base::Ser;
 use crate::workflow::ser::registry::SerRegistry;
 use crate::workflow::vad::base::Vad;
@@ -23,13 +28,17 @@ pub enum NodesError {
 }
 
 /// Every backend the pipeline runs, built once and shared read-only by all streams.
-/// `offline`, when set, replaces `asr` for uploaded files.
+/// `offline`, when set, replaces `asr` for uploaded files; `extra` holds the further engines a
+/// request may select.
 #[derive(Debug, Clone)]
 pub struct Nodes {
+    pub denoise: Option<Arc<dyn Denoise>>,
     pub ww: Option<Arc<dyn Ww>>,
     pub vad: Arc<dyn Vad>,
+    pub lid: Option<Arc<dyn Lid>>,
     pub asr: AsrBackend,
     pub offline: Option<AsrBackend>,
+    pub extra: Vec<(AsrEngine, AsrBackend)>,
     pub ser: Option<Arc<dyn Ser>>,
 }
 
@@ -39,10 +48,13 @@ impl Nodes {
     pub fn build(settings: &Settings, store: &ModelStore) -> Result<Self, BackendError> {
         let pipeline = &settings.stt.pipeline;
         Ok(Self {
+            denoise: DenoiseRegistry::build(&pipeline.denoise, store)?,
             ww: WwRegistry::build(&pipeline.ww, store)?,
             vad: VadRegistry::build(&pipeline.vad, store)?,
+            lid: LidRegistry::build(&pipeline.lid, store)?,
             asr: AsrRegistry::build(&pipeline.asr, store)?,
             offline: AsrRegistry::offline(&pipeline.asr, store)?,
+            extra: AsrRegistry::extra(&pipeline.asr, store)?,
             ser: SerRegistry::build(&pipeline.ser, store)?,
         })
     }

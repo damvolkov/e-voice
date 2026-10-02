@@ -84,9 +84,11 @@ pub enum SessionInput {
         segment: SegmentId,
         text: String,
     },
+    /// `lang` is set when the segment's language was identified rather than requested.
     Transcript {
         segment: SegmentId,
         result: Result<String, NodeError>,
+        lang: Option<Lang>,
     },
     Emotion {
         segment: SegmentId,
@@ -285,9 +287,10 @@ impl Session {
             SessionInput::Start { at } => self.step_start(now, at),
             SessionInput::End { span, audio } => self.step_end(now, span, audio),
             SessionInput::Partial { segment, text } => self.step_partial(segment, text),
-            SessionInput::Transcript { segment, result } => {
+            SessionInput::Transcript { segment, result, lang } => {
                 if let Some(slot) = self.join.slot(segment) {
                     slot.asr.accept(result);
+                    slot.lang = lang.or(slot.lang);
                 }
             }
             SessionInput::Emotion { segment, result } => {
@@ -327,7 +330,7 @@ impl Session {
     }
 
     fn step_release(&mut self) {
-        let lang = self.plan.lang;
+        let requested = self.plan.lang;
         let finals: Vec<Event> = std::iter::from_fn(|| self.join.release())
             .map(|(segment, slot)| {
                 let (text, error) = match slot.asr {
@@ -342,7 +345,7 @@ impl Session {
                 Event::Final(FinalEvent {
                     segment,
                     span: slot.span,
-                    lang,
+                    lang: slot.lang.unwrap_or(requested),
                     text,
                     emotion,
                     error,

@@ -8,6 +8,7 @@ use tokio::task::{AbortHandle, block_in_place, spawn_blocking};
 use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
+use crate::config::asr::AsrEngine;
 use crate::config::pipeline::PipelineConfig;
 use crate::core::audio::AudioGain;
 use crate::schema::audio::Audio;
@@ -19,6 +20,7 @@ use crate::schema::segment::{Segment, SegmentId, SegmentSpan};
 use crate::schema::transcript::Transcript;
 use crate::workflow::asr::base::AsrSession;
 use crate::workflow::asr::registry::AsrBackend;
+use crate::workflow::denoise::base::DenoiseSession;
 use crate::workflow::gate::GateRoute;
 use crate::workflow::nodes::Nodes;
 use crate::workflow::session::{Session, SessionCommand, SessionInput, SessionOutput, SessionPlan};
@@ -55,6 +57,7 @@ pub struct Runner {
 
 struct Stream {
     asr: AsrBackend,
+    denoise: Option<Box<dyn DenoiseSession>>,
     gain: AudioGain,
     session: Session,
     route: GateRoute,
@@ -123,19 +126,43 @@ impl Runner {
                         stream,
                         id,
                         move || session.finish(),
-                        |segment, result| SessionInput::Transcript { segment, result },
+                        |segment, result| SessionInput::Transcript {
+                            segment,
+                            result,
+                            lang: None,
+                        },
                     );
                 }
                 other => stream.decoding = other,
             },
             SessionCommand::Transcribe(Segment { id, audio, .. }) => {
                 if let AsrBackend::Batch(asr) = &stream.asr {
-                    let asr = Arc::clone(asr);
+                    let (asr, lid) = (Arc::clone(asr), self.nodes.lid.clone());
+                    let min = usize::try_from(Audio::length(self.config.lid.min)).unwrap_or(usize::MAX);
                     self.run_spawn(
                         stream,
                         id,
-                        move || asr.transcribe(lang, &audio),
-                        |segment, result| SessionInput::Transcript { segment, result },
+                        move || {
+                            let heard = lid.filter(|_| audio.len() >= min).and_then(|lid| {
+                                lid.identify(&audio)
+                                    .inspect_err(|error| tracing::warn!(%error, "lid.failed"))
+                                    .ok()
+                                    .flatten()
+                            });
+                            asr.transcribe(heard.unwrap_or(lang), &audio).map(|text| (text, heard))
+                        },
+                        |segment, result| match result {
+                            Ok((text, lang)) => SessionInput::Transcript {
+                                segment,
+                                result: Ok(text),
+                                lang,
+                            },
+                            Err(error) => SessionInput::Transcript {
+                                segment,
+                                result: Err(error),
+                                lang: None,
+                            },
+                        },
                     );
                 }
             }
@@ -209,7 +236,14 @@ impl Runner {
     }
 
     async fn run_frame(&self, stream: &mut Stream, chunk: &[f32], lang: Lang) -> Result<(), RunnerError> {
-        let mut gained = chunk.to_vec();
+        let clean = match stream.denoise.as_mut() {
+            Some(denoise) => Self::common_guard("denoise", || denoise.push(chunk))?,
+            None => chunk.to_vec(),
+        };
+        self.run_clean(stream, clean, lang).await
+    }
+
+    async fn run_clean(&self, stream: &mut Stream, mut gained: Vec<f32>, lang: Lang) -> Result<(), RunnerError> {
         if stream.gain.enabled() {
             stream.gain.apply(&mut gained);
         }
@@ -259,6 +293,13 @@ impl Runner {
     }
 
     async fn run_flush(&self, stream: &mut Stream, lang: Lang) -> Result<(), RunnerError> {
+        let rest = match stream.denoise.as_mut() {
+            Some(denoise) => Some(Self::common_guard("denoise", || denoise.flush())?),
+            None => None,
+        };
+        if let Some(rest) = rest.filter(|rest| !rest.is_empty()) {
+            self.run_clean(stream, rest, lang).await?;
+        }
         let flushed = match stream.vad.as_mut() {
             Some((vad, offset)) => Some((Self::common_guard("vad", || vad.flush())?, *offset)),
             None => None,
@@ -281,6 +322,24 @@ impl Runner {
             config: Arc::new(config),
             jobs,
         }
+    }
+
+    /// This runner with uploads transcribed by `engine`; `None` when that engine is not loaded.
+    #[must_use]
+    pub fn engine(&self, engine: AsrEngine) -> Option<Self> {
+        if self.config.asr.file() == Some(engine) {
+            return Some(self.clone());
+        }
+        let (_, asr) = self.nodes.extra.iter().find(|(loaded, _)| *loaded == engine)?;
+        let nodes = Nodes {
+            offline: Some(asr.clone()),
+            ..(*self.nodes).clone()
+        };
+        Some(Self {
+            nodes: Arc::new(nodes),
+            config: Arc::clone(&self.config),
+            jobs: Arc::clone(&self.jobs),
+        })
     }
 
     /// Runs until the session closes: input end drains every pending segment, `cancel` (or the event
@@ -313,8 +372,10 @@ impl Runner {
             .transpose()?;
         let keep = usize::try_from(Audio::length(self.config.preroll)).unwrap_or(usize::MAX);
         let gain = self.config.gain;
+        let denoise = self.nodes.denoise.as_ref().map(|denoise| denoise.open()).transpose()?;
         let mut stream = Stream {
             asr,
+            denoise,
             gain: AudioGain::new(gain.peak, gain.max, gain.release),
             session: Session::new(plan),
             route: GateRoute::Wake,

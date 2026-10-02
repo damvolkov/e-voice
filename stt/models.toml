@@ -56,3 +56,43 @@ files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-mo
 id = "piper-en-ryan-medium"
 scope = "ops"
 files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ryan-medium.tar.bz2", sha256 = "c546af78b6395b4e7c4ce1ed899438b64426a362f5d4ec5fecd090ded9ad7505", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "canary-180m-flash-int8"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8.tar.bz2", sha256 = "7a38ed8b13f014ad632b09ff8d22e0c6f1359dd046af9235d281dfae841b9ab9", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "cohere-transcribe-int8"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01.tar.bz2", sha256 = "bd582588d50685a795dcd2807ab77e11361b8312d96c53884682def45ab4206d", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "whisper-turbo"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-turbo.tar.bz2", sha256 = "b11acbbcd660b44a8e0df33724feb5aaa709cf65668f2823d59f656312544f22", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "whisper-tiny"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2", sha256 = "c46116994e539aa165266d96b325252728429c12535eb9d8b6a2b10f129e66b1", unpack = "tar.bz2", strip = 1 }]
+
+# Kroko community models: CC-BY-SA, intended for hobby/research use; commercial models are licensed
+# separately by Banafo. Benchmarked here, never a default.
+[[model]]
+id = "kroko-es"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-es-kroko-2025-08-06.tar.bz2", sha256 = "31b2230a95d23290b308b393da930015a4b2105cb3abb9367aed35f7fcf29cf1", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "kroko-en"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06.tar.bz2", sha256 = "c8676e5ff9ac2a85296e53ee0fd4d5fb1db6770e7a7647166eeafe349ade6834", unpack = "tar.bz2", strip = 1 }]
+
+[[model]]
+id = "gtcrn"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx", sha256 = "e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534" }]
+
+# emotion2vec+ large has no published ONNX: `make export` builds it from the pinned checkpoint
+# (emotion2vec/emotion2vec_plus_large@6c303ba) into data/stt/ops/exports. The digests pin that export;
+# a different torch/FunASR build may trace different bytes, which `pull` then refuses.
+[[model]]
+id = "emotion2vec-plus-large"
+files = [
+  { url = "file://data/stt/ops/exports/emotion2vec-plus-large/emotion2vec_plus_large.onnx", sha256 = "2d05754cdb5d59b420c2df9b1271877517b5eed85fa28ae99d341b32fb8d5c88" },
+  { url = "file://data/stt/ops/exports/emotion2vec-plus-large/emotion2vec_head.json", sha256 = "45e769b4e1d02d77cc1ceb20e0bf74eb91d61aa8e7c1b83acd03b070de4feb60" },
+]

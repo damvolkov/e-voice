@@ -209,3 +209,44 @@ async fn test_emotion_parameter_selects_field_tag_or_off() {
     let body: Value = bad.json().await.unwrap();
     assert_eq!(body["error"]["param"], "emotion");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_model_field_selects_a_loaded_engine() {
+    use e_voice_stt::config::asr::AsrEngine;
+    use e_voice_stt::workflow::asr::registry::AsrBackend;
+
+    use crate::fake::FakeNamed;
+
+    let mut built = nodes(batch(0), None, None);
+    std::sync::Arc::get_mut(&mut built).unwrap().extra = vec![(
+        AsrEngine::Whisper,
+        AsrBackend::Batch(std::sync::Arc::new(FakeNamed("whisper"))),
+    )];
+    let (address, _) = app::serve(built, 1 << 20, false).await;
+    let ask = |model: &'static str| {
+        let form = Form::new()
+            .text("model", model)
+            .text("response_format", "text")
+            .part("file", Part::bytes(speech()).file_name("speech.wav"));
+        reqwest::Client::new()
+            .post(format!("http://{address}/v1/audio/transcriptions"))
+            .multipart(form)
+            .send()
+    };
+    assert_eq!(
+        ask("whisper").await.unwrap().text().await.unwrap(),
+        "whisper:8000 whisper:16000"
+    );
+    assert_eq!(
+        ask("WHISPER-TURBO").await.unwrap().text().await.unwrap(),
+        "whisper:8000 whisper:16000"
+    );
+    assert_eq!(
+        ask("whisper-1").await.unwrap().text().await.unwrap(),
+        "batch:8000 batch:16000"
+    );
+    let missing = ask("cohere").await.unwrap();
+    assert_eq!(missing.status(), 400);
+    let body: Value = missing.json().await.unwrap();
+    assert_eq!(body["error"]["param"], "model");
+}

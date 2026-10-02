@@ -39,7 +39,7 @@ impl IntoResponse for ScribeError {
 impl From<BatchError> for ScribeError {
     fn from(error: BatchError) -> Self {
         match error {
-            BatchError::Decode(message) => Self {
+            BatchError::Decode(message) | BatchError::Model(message) => Self {
                 status: StatusCode::BAD_REQUEST,
                 message,
             },
@@ -66,7 +66,7 @@ impl From<MultipartError> for ScribeError {
 pub struct ScribeForm {
     #[schema(value_type = String, format = Binary)]
     pub file: Vec<u8>,
-    /// Accepted for compatibility.
+    /// A loaded engine name or model id selects it; any other value (`scribe_v1`) uses the default.
     pub model_id: String,
     /// `es`/`en` or `spa`/`eng`.
     pub language_code: Option<String>,
@@ -106,6 +106,7 @@ pub async fn scribe(
         message,
     };
     let (mut file, mut extension, mut lang, mut emotion) = (None, None, state.lang, state.emotion);
+    let mut model: Option<String> = None;
     while let Some(field) = multipart.next_field().await? {
         match field.name().unwrap_or_default() {
             "file" => {
@@ -125,13 +126,14 @@ pub async fn scribe(
                 lang = short.parse::<Lang>().map_err(invalid)?;
             }
             "emotion" => emotion = field.text().await?.parse::<EmotionMode>().map_err(invalid)?,
+            "model_id" => model = Some(field.text().await?),
             _ => {}
         }
     }
     let file = file
         .filter(|file| !file.is_empty())
         .ok_or_else(|| invalid("missing required field: file".to_owned()))?;
-    let transcript = Batch::transcribe(&state, file.to_vec(), extension, lang).await?;
+    let transcript = Batch::transcribe(&state, model.as_deref(), file.to_vec(), extension, lang).await?;
     let words = transcript
         .segments
         .iter()

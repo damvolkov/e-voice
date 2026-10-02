@@ -10,7 +10,7 @@ use figment::providers::{Format, Toml};
 use futures_util::StreamExt;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use walkdir::WalkDir;
 
 use crate::config::ops::{ModelsVerify, OpsConfig};
@@ -270,15 +270,33 @@ impl ModelStore {
         }
     }
 
+    /// `file://` sources are local exports (relative to the working directory, or absolute); anything
+    /// else is fetched over HTTP. Both are hashed while copied.
     async fn pull_fetch(&self, file: &ModelFile, dest: &Path) -> Result<(), ModelError> {
-        let response = self.http.get(&file.url).send().await?.error_for_status()?;
         let mut out = tokio::fs::File::create(dest).await?;
         let mut hasher = Sha256::new();
-        let mut body = response.bytes_stream();
-        while let Some(chunk) = body.next().await {
-            let chunk = chunk?;
-            hasher.update(&chunk);
-            out.write_all(&chunk).await?;
+        match file.url.strip_prefix("file://") {
+            Some(path) => {
+                let mut source = tokio::fs::File::open(path).await?;
+                let mut buffer = vec![0u8; 1 << 20];
+                loop {
+                    let read = source.read(&mut buffer).await?;
+                    let Some(chunk) = buffer.get(..read).filter(|chunk| !chunk.is_empty()) else {
+                        break;
+                    };
+                    hasher.update(chunk);
+                    out.write_all(chunk).await?;
+                }
+            }
+            None => {
+                let response = self.http.get(&file.url).send().await?.error_for_status()?;
+                let mut body = response.bytes_stream();
+                while let Some(chunk) = body.next().await {
+                    let chunk = chunk?;
+                    hasher.update(&chunk);
+                    out.write_all(&chunk).await?;
+                }
+            }
         }
         out.sync_all().await?;
         let actual = hex::encode(hasher.finalize());
@@ -373,7 +391,7 @@ impl ModelStore {
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(30))
             .read_timeout(Duration::from_secs(120))
-            .user_agent(concat!("e-voice/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("e-voice/", env!("E_VOICE_VERSION")))
             .build()?;
         Ok(Self {
             data: config.data.clone(),
@@ -506,6 +524,30 @@ mod tests {
             b"tokens"
         );
         assert!(!store.dir("asr").unwrap().join(".archive").exists());
+    }
+
+    #[tokio::test]
+    async fn test_pull_copies_local_exports_and_checks_their_digest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let export = tmp.path().join("head.json");
+        std::fs::write(&export, b"head").unwrap();
+        let entry = |digest: &str| {
+            format!(
+                "[[model]]\nid = \"ser\"\nfiles = [{{ url = \"file://{}\", sha256 = \"{digest}\" }}]\n",
+                export.display()
+            )
+        };
+        let good = store(tmp.path(), &entry(&sha(b"head")));
+        good.pull(&[]).await.unwrap();
+        assert_eq!(
+            std::fs::read(good.dir("ser").unwrap().join("head.json")).unwrap(),
+            b"head"
+        );
+        let bad = store(
+            tmp.path(),
+            &entry(&sha(b"other")).replace("id = \"ser\"", "id = \"bad\""),
+        );
+        assert!(matches!(bad.pull(&[]).await, Err(ModelError::Digest { .. })));
     }
 
     #[tokio::test]

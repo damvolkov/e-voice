@@ -12,3 +12,7 @@
 !stt/src/
 !cli/Cargo.toml
 !cli/src/
+# workspace members: cargo resolves every manifest even when building one package
+!tts/Cargo.toml
+!tts/build.rs
+!tts/src/

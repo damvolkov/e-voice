@@ -1,2 +1,5 @@
-[workflow.gain]
+[stt.pipeline.gain]
 max = 0.0
+
+[stt.pipeline.asr]
+offline = { backend = "live" }

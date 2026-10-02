@@ -20,7 +20,9 @@ impl SerRegistry {
         let dir = store.dir(model).map_err(|_| BackendError::Unknown(model.to_owned()))?;
         match config.backend {
             SerBackend::Off => Ok(None),
-            SerBackend::Emotion2vec => Ok(Some(Arc::new(Emotion2vecSer::new(&dir, config.threads, model)?))),
+            SerBackend::Emotion2vec | SerBackend::Emotion2vecLarge => {
+                Ok(Some(Arc::new(Emotion2vecSer::new(&dir, config.threads, model)?)))
+            }
         }
     }
 }

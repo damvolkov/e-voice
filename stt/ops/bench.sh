@@ -6,7 +6,7 @@ DATA="${DATA:-data/stt/ops/datasets}"
 OUT="${OUT:-data/stt/ops/results}"
 STREAMS="${STREAMS:-4}"
 LIVE="${LIVE:-20}"
-SER="${SER:-stt/ops/bench/parakeet.toml}"
+SER="${SER:-stt/ops/bench/parakeet.toml stt/ops/bench/ser-large.toml}"
 mkdir -p "${OUT}"
 
 run() {
@@ -27,6 +27,8 @@ for config in "${configs[@]}"; do
     run "${config}" fleurs-es live4 --mode live --limit "${LIVE}" --streams 4
 done
 
-for set in mesd crema; do
-    run "${SER}" "${set}" file --streams "${STREAMS}"
+for ser in ${SER}; do
+    for set in mesd crema; do
+        run "${ser}" "${set}" file --streams "${STREAMS}"
+    done
 done

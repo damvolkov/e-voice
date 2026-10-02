@@ -25,6 +25,10 @@ jobs = 8                                     # segment work in flight across all
 gate = { close = "window", idle = "8s" }     # close: utterance | window | session   (wake word only)
 gain = { peak = -6.0, max = 40.0, release = "5s" }   # dBFS target, dB max boost (0 = off)
 
+[stt.pipeline.denoise]
+backend = "off"                              # off | gtcrn   (streaming speech enhancement before gain and VAD)
+threads = 1
+
 [stt.pipeline.ww]
 backend = "off"                              # off | kws | oww
 keyword = "hey eager"                        # kws: any English phrase (2+ words) · oww: hey_jarvis
@@ -42,14 +46,23 @@ max_speech = "20s"
 pad = "300ms"                                # audio kept around each segment for the nodes
 threads = 1
 
+[stt.pipeline.lid]
+backend = "off"                              # off | whisper   (per-segment language for batch decoding)
+threads = 2
+min = "1s"                                   # shorter segments keep the requested language
+
 [stt.pipeline.asr]
-backend = "nemotron"                         # nemotron (streaming partials) | parakeet (per segment)
+backend = "nemotron"                         # streaming: nemotron | kroko (CC-BY-SA, research only)
+                                             # per segment: parakeet | canary | cohere | whisper
 # chunk = "1120ms"                           # nemotron only: 160ms | 560ms | 1120ms
-# lead = "300ms"                             # nemotron only
-# tail = "1200ms"                            # nemotron only
+# lead = "300ms"                             # streaming only
+# tail = "1200ms"                            # streaming only
 threads = 4
 deadline = "15s"
-offline = { backend = "parakeet", threads = 4 }   # uploaded files: parakeet | live
+offline = { backend = "parakeet", threads = 4, choices = [] }
+# offline.backend: uploaded files by default — parakeet | canary | cohere | whisper | live
+# offline.choices: more engines loaded at startup, picked per request by the model field
+#                  (model, model_id): e.g. ["whisper", "cohere"]
 
 [stt.pipeline.ser]
 backend = "emotion2vec"                      # emotion2vec | off

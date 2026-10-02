@@ -64,6 +64,7 @@ impl From<BatchError> for OpenaiError {
     fn from(error: BatchError) -> Self {
         match error {
             BatchError::Decode(message) => Self::invalid(message, Some("file")),
+            BatchError::Model(message) => Self::invalid(message, Some("model")),
             BatchError::Failed(message) => Self::server(message),
         }
     }
@@ -259,7 +260,8 @@ pub struct TranscriptionForm {
     /// Audio: wav, mp3, m4a, flac, ogg, opus or webm.
     #[schema(value_type = String, format = Binary)]
     pub file: Vec<u8>,
-    /// Accepted for compatibility; the configured pipeline transcribes.
+    /// A loaded engine (`parakeet`, `canary`, `cohere`, `whisper`, or its model id) selects it; any
+    /// other value (`whisper-1`, …) uses the default file engine.
     pub model: String,
     /// `es` or `en` (regions such as `es-ES` are accepted).
     pub language: Option<String>,

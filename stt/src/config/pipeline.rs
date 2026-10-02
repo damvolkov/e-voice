@@ -3,6 +3,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::config::asr::AsrConfig;
+use crate::config::denoise::DenoiseConfig;
+use crate::config::lid::LidConfig;
 use crate::config::ser::SerConfig;
 use crate::config::vad::VadConfig;
 use crate::config::ww::WwConfig;
@@ -81,8 +83,10 @@ pub struct PipelineConfig {
     pub jobs: usize,
     pub gate: GateConfig,
     pub gain: GainConfig,
+    pub denoise: DenoiseConfig,
     pub ww: WwConfig,
     pub vad: VadConfig,
+    pub lid: LidConfig,
     pub asr: AsrConfig,
     pub ser: SerConfig,
 }
@@ -98,8 +102,10 @@ impl Default for PipelineConfig {
             jobs: 8,
             gate: GateConfig::default(),
             gain: GainConfig::default(),
+            denoise: DenoiseConfig::default(),
             ww: WwConfig::default(),
             vad: VadConfig::default(),
+            lid: LidConfig::default(),
             asr: AsrConfig::default(),
             ser: SerConfig::default(),
         }

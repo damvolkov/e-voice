@@ -2,17 +2,16 @@ use std::fmt::{self, Debug};
 use std::path::Path;
 use std::sync::Arc;
 
-use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineStream, OnlineTransducerModelConfig};
+use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineTransducerModelConfig};
 
 use crate::config::asr::AsrConfig;
 use crate::core::runtime::Runtime;
-use crate::schema::audio::{Audio, RATE};
-use crate::schema::error::{BackendError, NodeError};
+use crate::schema::audio::Audio;
+use crate::schema::error::BackendError;
 use crate::schema::lang::Lang;
 use crate::workflow::asr::base::{AsrSession, StreamingAsr};
+use crate::workflow::asr::online::OnlineSession;
 use crate::workflow::asr::transducer::Transducer;
-
-const SAMPLE_RATE: i32 = RATE.cast_signed();
 
 /// Nemotron 3.5 cache-aware streaming transducer; the language is a per-stream prompt.
 pub struct NemotronAsr {
@@ -58,56 +57,11 @@ impl NemotronAsr {
 
 impl StreamingAsr for NemotronAsr {
     fn open(&self, lang: Lang) -> Result<Box<dyn AsrSession>, BackendError> {
-        let stream = self.recognizer.create_stream();
-        stream.set_option("language", lang.locale());
-        stream.accept_waveform(SAMPLE_RATE, &vec![0.0; self.lead]);
-        Ok(Box::new(NemotronAsrSession {
-            recognizer: Arc::clone(&self.recognizer),
-            stream,
-            tail: self.tail,
-            last: String::new(),
-        }))
-    }
-}
-
-pub struct NemotronAsrSession {
-    recognizer: Arc<OnlineRecognizer>,
-    stream: OnlineStream,
-    tail: usize,
-    last: String,
-}
-
-impl Debug for NemotronAsrSession {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("NemotronAsrSession")
-            .field("last", &self.last)
-            .finish_non_exhaustive()
-    }
-}
-
-impl NemotronAsrSession {
-    fn common_decode(&self) -> Option<String> {
-        while self.recognizer.is_ready(&self.stream) {
-            self.recognizer.decode(&self.stream);
-        }
-        self.recognizer
-            .get_result(&self.stream)
-            .map(|result| result.text.split_whitespace().collect::<Vec<_>>().join(" "))
-    }
-}
-
-impl AsrSession for NemotronAsrSession {
-    fn push(&mut self, audio: &[f32]) -> Option<String> {
-        self.stream.accept_waveform(SAMPLE_RATE, audio);
-        let text = self.common_decode().filter(|text| *text != self.last)?;
-        self.last.clone_from(&text);
-        Some(text)
-    }
-
-    fn finish(self: Box<Self>) -> Result<String, NodeError> {
-        self.stream.accept_waveform(SAMPLE_RATE, &vec![0.0; self.tail]);
-        self.stream.input_finished();
-        self.common_decode()
-            .ok_or_else(|| NodeError::Backend("nemotron produced no result".to_owned()))
+        Ok(Box::new(OnlineSession::open(
+            &self.recognizer,
+            |stream| stream.set_option("language", lang.locale()),
+            self.lead,
+            self.tail,
+        )))
     }
 }

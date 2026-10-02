@@ -1,0 +1,104 @@
+##### RELEASE #####
+# Git-first releases: the tag IS the version (no bump commit). The workflow computes the next tag,
+# pushes it, opens the GitHub release, then publishes one image per service in parallel. Each image job
+# is inert until its gate is on (see .github/ci.vars.example). Today: STT; TTS and full join as sibling
+# jobs.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment (ignored when tag is set)
+        type: choice
+        default: patch
+        options: [patch, minor, major]
+      tag:
+        description: Republish an existing v* tag verbatim (empty = cut a new version)
+        type: string
+        default: ""
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: version + tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+          GIVEN: ${{ inputs.tag }}
+        run: |
+          if [ -n "$GIVEN" ]; then echo "tag=$GIVEN" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if git describe --tags --abbrev=0 >/dev/null 2>&1; then
+            IFS=. read -r M m p <<< "$(git describe --tags --abbrev=0 | sed 's/^v//')"
+            case "$BUMP" in
+              major) M=$((M+1)); m=0; p=0 ;;
+              minor) m=$((m+1)); p=0 ;;
+              *) p=$((p+1)) ;;
+            esac
+          else
+            M=0; m=1; p=0
+          fi
+          echo "tag=v$M.$m.$p" >> "$GITHUB_OUTPUT"
+      - name: push tag and open the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          git tag "$TAG" 2>/dev/null || true
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf '%s:%s' 'x-access-token' "$GH_TOKEN" | base64 -w0)" push origin "$TAG"
+          gh release create "$TAG" --latest --verify-tag --generate-notes || gh release edit "$TAG" --latest=true
+
+  image-stt:
+    name: image · e-voice-stt
+    if: vars.PUBLISH_IMAGE == 'true'
+    needs: bump
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.bump.outputs.tag }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/e-voice-stt
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.bump.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.bump.outputs.tag }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=e-voice-stt
+            org.opencontainers.image.description=CPU-first speech-to-text service with emotion, OpenAI/Deepgram/ElevenLabs compatible
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile.stt
+          build-args: VERSION=${{ needs.bump.outputs.tag }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

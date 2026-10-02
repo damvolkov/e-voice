@@ -37,14 +37,22 @@ pub struct Settings {
 impl Settings {
     // ##### PRIVATE #####
 
-    fn validate_rules(&self) -> [(bool, &'static str, String); 14] {
+    fn validate_rules(&self) -> [(bool, &'static str, String); 15] {
         let pipeline = &self.stt.pipeline;
         let (ww, vad, asr, ser) = (&pipeline.ww, &pipeline.vad, &pipeline.asr, &pipeline.ser);
-        let nemotron_only =
-            asr.backend == AsrBackend::Parakeet && (asr.chunk.is_some() || asr.lead.is_some() || asr.tail.is_some());
+        let nemotron_only = asr.backend != AsrBackend::Nemotron && asr.chunk.is_some();
+        let streaming_only = !asr.streaming() && (asr.lead.is_some() || asr.tail.is_some());
         let kws_only = ww.backend == WwBackend::Oww && ww.boost.is_some();
         let unit = |value: f32| value > 0.0 && value <= 1.0;
-        let threads = [ww.threads, vad.threads, asr.threads, asr.offline.threads, ser.threads];
+        let threads = [
+            pipeline.denoise.threads,
+            ww.threads,
+            vad.threads,
+            pipeline.lid.threads,
+            asr.threads,
+            asr.offline.threads,
+            ser.threads,
+        ];
         [
             (
                 self.server.upload >= 1,
@@ -99,8 +107,13 @@ impl Settings {
             ),
             (
                 !nemotron_only,
+                "stt.pipeline.asr.chunk",
+                "applies to backend \"nemotron\" only".to_owned(),
+            ),
+            (
+                !streaming_only,
                 "stt.pipeline.asr",
-                "chunk, lead and tail apply to backend \"nemotron\" only".to_owned(),
+                "lead and tail apply to streaming backends (nemotron, kroko) only".to_owned(),
             ),
             (
                 asr.deadline > Duration::ZERO && ser.deadline > Duration::ZERO,
@@ -170,19 +183,19 @@ impl Settings {
     #[must_use]
     pub fn models(&self) -> Vec<String> {
         let pipeline = &self.stt.pipeline;
-        let ww = pipeline.ww.model();
-        let live = Some(pipeline.asr.model().to_owned());
-        let offline = pipeline
-            .asr
-            .offline_model()
-            .filter(|model| *model != pipeline.asr.model())
-            .map(str::to_owned);
-        let ser = pipeline.ser.model().map(str::to_owned);
-        ww.into_iter()
+        let front = [pipeline.denoise.model(), Some(pipeline.vad.model())];
+        let back = [pipeline.lid.model(), pipeline.ser.model()];
+        pipeline
+            .ww
+            .model()
+            .into_iter()
             .chain(
-                [Some(pipeline.vad.model().to_owned()), live, offline, ser]
+                front
                     .into_iter()
-                    .flatten(),
+                    .flatten()
+                    .chain(pipeline.asr.models())
+                    .chain(back.into_iter().flatten())
+                    .map(str::to_owned),
             )
             .collect()
     }
@@ -194,9 +207,10 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use figment::Jail;
+    use figment::providers::{Format, Toml};
+    use figment::{Figment, Jail};
 
-    use crate::config::asr::{AsrBackend, NemotronChunk};
+    use crate::config::asr::{AsrBackend, AsrEngine, NemotronChunk};
     use crate::config::log::LogFormat;
     use crate::config::vad::VadBackend;
     use crate::config::ww::WwBackend;
@@ -271,8 +285,62 @@ mod tests {
     }
 
     #[test]
+    fn test_every_bench_config_is_valid() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("ops/bench");
+        let configs: Vec<PathBuf> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "toml"))
+            .collect();
+        assert!(configs.len() >= 10, "{configs:?}");
+        for config in configs {
+            let loaded = Figment::from(Toml::file_exact(&config)).extract::<Settings>();
+            let settings = loaded.unwrap_or_else(|error| panic!("{}: {error}", config.display()));
+            settings
+                .validate()
+                .unwrap_or_else(|error| panic!("{}: {error}", config.display()));
+        }
+    }
+
+    #[test]
+    fn test_models_cover_every_node_and_skip_a_redundant_offline_engine() {
+        let mut settings = Settings::default();
+        let pipeline = &mut settings.stt.pipeline;
+        pipeline.denoise.backend = crate::config::denoise::DenoiseBackend::Gtcrn;
+        pipeline.lid.backend = crate::config::lid::LidBackend::Whisper;
+        pipeline.asr.backend = AsrBackend::Kroko;
+        pipeline.asr.offline.backend = crate::config::asr::OfflineBackend::Cohere;
+        assert_eq!(
+            settings.models(),
+            [
+                "gtcrn",
+                "silero-vad",
+                "kroko-es",
+                "kroko-en",
+                "cohere-transcribe-int8",
+                "whisper-tiny",
+                "emotion2vec-plus-base"
+            ]
+        );
+        settings.stt.pipeline.asr.backend = AsrBackend::Cohere;
+        assert_eq!(settings.stt.pipeline.asr.models(), ["cohere-transcribe-int8"]);
+        assert!(settings.stt.pipeline.asr.offline().is_none());
+        let asr = &mut settings.stt.pipeline.asr;
+        asr.offline.choices = vec![AsrEngine::Whisper, AsrEngine::Cohere, AsrEngine::Whisper];
+        assert_eq!(asr.selectable(), [AsrEngine::Cohere, AsrEngine::Whisper]);
+        assert_eq!(asr.extra(), [AsrEngine::Whisper]);
+        assert_eq!(asr.models(), ["cohere-transcribe-int8", "whisper-turbo"]);
+    }
+
+    #[test]
     fn test_rejects_unknown_backends_keys_and_sections() {
-        assert_eq!(invalid("[stt.pipeline.asr]\nbackend = \"whisper\"\n"), Some("load"));
+        assert_eq!(invalid("[stt.pipeline.asr]\nbackend = \"vosk\"\n"), Some("load"));
+        assert_eq!(invalid("[stt.pipeline.lid]\nbackend = \"fasttext\"\n"), Some("load"));
+        assert_eq!(
+            invalid("[stt.pipeline.asr]\noffline = { choices = [\"live\"] }\n"),
+            Some("load")
+        );
+        assert_eq!(invalid("[stt.pipeline.denoise]\nbackend = \"rnnoise\"\n"), Some("load"));
         assert_eq!(invalid("[stt.pipeline.asr]\nchunk = \"300ms\"\n"), Some("load"));
         assert_eq!(invalid("[stt.pipeline.vad]\nmodel = \"silero-vad\"\n"), Some("load"));
         assert_eq!(invalid("[tts]\nvoice = \"x\"\n"), Some("load"));
@@ -300,7 +368,23 @@ mod tests {
         );
         assert_eq!(
             invalid("[stt.pipeline.asr]\nbackend = \"parakeet\"\nchunk = \"560ms\"\n"),
+            Some("stt.pipeline.asr.chunk")
+        );
+        assert_eq!(
+            invalid("[stt.pipeline.asr]\nbackend = \"kroko\"\nchunk = \"560ms\"\n"),
+            Some("stt.pipeline.asr.chunk")
+        );
+        assert_eq!(
+            invalid("[stt.pipeline.asr]\nbackend = \"canary\"\ntail = \"1s\"\n"),
             Some("stt.pipeline.asr")
+        );
+        assert_eq!(
+            invalid("[stt.pipeline.lid]\nthreads = 0\n"),
+            Some("stt.pipeline.*.threads")
+        );
+        assert_eq!(
+            invalid("[stt.pipeline.asr]\nbackend = \"kroko\"\nlead = \"200ms\"\n"),
+            None
         );
         assert_eq!(
             invalid("[stt.pipeline.vad]\nmax_speech = \"100ms\"\n"),

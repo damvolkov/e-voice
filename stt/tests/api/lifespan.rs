@@ -36,13 +36,23 @@ async fn test_start_loads_configured_nodes() {
         verify: ModelsVerify::Stamp,
     };
     let state = Lifespan::start(&settings).await.unwrap();
-    assert_eq!(state.models, ["nemotron-3.5-1120ms-int8", "parakeet-v3-int8"]);
+    assert_eq!(state.models, ["parakeet"]);
+    settings.stt.pipeline.asr.offline.choices = vec![e_voice_stt::config::asr::AsrEngine::Whisper];
+    let chosen = Lifespan::start(&settings).await.unwrap();
+    assert_eq!(chosen.models, ["parakeet", "whisper"]);
+    assert!(
+        chosen
+            .runner
+            .engine(e_voice_stt::config::asr::AsrEngine::Whisper)
+            .is_some()
+    );
     assert_eq!(
         settings.models(),
         [
             "silero-vad",
             "nemotron-3.5-1120ms-int8",
             "parakeet-v3-int8",
+            "whisper-turbo",
             "emotion2vec-plus-base"
         ]
     );

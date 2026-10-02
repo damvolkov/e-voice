@@ -24,7 +24,7 @@ impl Logger {
     /// Invalid level directive, or a subscriber already installed.
     pub fn init(config: &LogConfig) -> Result<Self, LoggerError> {
         let filter = EnvFilter::try_new(&config.level)?;
-        let (writer, guard) = tracing_appender::non_blocking(std::io::stdout());
+        let (writer, guard) = tracing_appender::non_blocking(std::io::stderr());
         let builder = tracing_subscriber::fmt().with_env_filter(filter).with_writer(writer);
         let installed = match config.format {
             LogFormat::Json => builder.json().flatten_event(true).try_init(),

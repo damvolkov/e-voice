@@ -1,0 +1,3 @@
+[stt.pipeline.asr]
+backend = "cohere"
+offline = { backend = "live" }

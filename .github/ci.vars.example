@@ -1,0 +1,13 @@
+# Optional CI/CD gates — GitHub Actions *variables*
+# (Settings → Secrets and variables → Actions → Variables).
+# Every gate ships inert: a repo enables only what it is. `make gates` (part of `make check`) fails
+# when a workflow reads an undeclared gate or a gate here ships enabled.
+#
+# Enable:  gh variable set NAME --body true
+# Disable: gh variable delete NAME
+#
+# Always on (not gates): prek hooks (fmt, clippy, bounds, tests, ruff, ty, pytest, zizmor, gitleaks)
+# and the runtime image builds on every PR.
+
+DOCS_DEPLOY=false      # docs.yml publishes the site to GitHub Pages from main (Settings → Pages → Source: GitHub Actions)
+PUBLISH_IMAGE=false    # release.yml pushes ghcr.io/<owner>/e-voice-stt :X.Y.Z, :X.Y and :latest

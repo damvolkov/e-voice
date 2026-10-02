@@ -1,0 +1,3 @@
+[stt.pipeline.asr]
+backend = "canary"
+offline = { backend = "live" }

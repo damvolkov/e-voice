@@ -4,7 +4,8 @@ use serde_json::{Value, json};
 
 use crate::api::state::AppState;
 
-/// The loaded ASR models, live first; transcription endpoints accept any `model` value.
+/// Engines a transcription request can select by `model` (`model_id`), default first. Any other model
+/// value uses the default.
 #[utoipa::path(get, path = "/v1/models", tag = "openai", responses((status = 200, description = "OpenAI model list", body = Object)))]
 pub async fn models(State(state): State<AppState>) -> Json<Value> {
     let data: Vec<Value> = state

@@ -260,9 +260,12 @@ impl AudioFile {
             .map_err(|error| fail(&error))?;
         let (mut ingest, mut output, mut interleaved) = (None::<AudioIngest>, Vec::new(), Vec::<f32>::new());
         loop {
+            // Streamed containers (MediaRecorder WebM: unknown-size segments, no cues) end in an
+            // unexpected EOF rather than a clean end of stream.
             let packet = match format.next_packet() {
                 Ok(Some(packet)) => packet,
                 Ok(None) | Err(MediaError::ResetRequired) => break,
+                Err(MediaError::IoError(error)) if error.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(error) => return Err(fail(&error)),
             };
             if packet.track_id != id {
@@ -395,8 +398,11 @@ mod tests {
     #[test]
     fn test_file_decodes_every_openai_format_to_16k_mono() {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/resources/audio");
-        for extension in ["wav", "mp3", "m4a", "flac", "ogg", "opus", "webm"] {
-            let bytes = std::fs::read(dir.join(format!("tone.{extension}"))).unwrap();
+        let files = ["wav", "mp3", "m4a", "flac", "ogg", "opus", "webm"].map(|extension| format!("tone.{extension}"));
+        // What browsers' MediaRecorder writes: unknown-size WebM without cues, fragmented MP4.
+        let recorded = ["recorder.webm", "recorder.m4a"].map(str::to_owned);
+        for extension in files.iter().chain(&recorded) {
+            let bytes = std::fs::read(dir.join(extension)).unwrap();
             let samples = AudioFile::decode(bytes, None).unwrap();
             assert!(
                 (15_000..=17_500).contains(&samples.len()),

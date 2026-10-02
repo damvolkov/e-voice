@@ -20,7 +20,7 @@ async fn test_reports_loaded_runtime() {
     let response = get("/health").await;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(
-        response.ends_with(r#"{"status":"ok","sherpa":"1.13.8","onnxruntime":"1.28.2"}"#),
+        response.ends_with(r#"{"status":"ok","version":"0.1.0","sherpa":"1.13.8","onnxruntime":"1.28.2"}"#),
         "{response}"
     );
 }

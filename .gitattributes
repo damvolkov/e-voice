@@ -1,0 +1,15 @@
+# Normalize line endings so byte-level fixtures are identical on every OS.
+* text=auto eol=lf
+*.svg text eol=lf
+*.png binary
+*.wav binary
+*.flac binary
+*.mp3 binary
+*.m4a binary
+*.ogg binary
+*.opus binary
+*.webm binary
+*.onnx binary
+*.so binary
+*.dylib binary
+*.dll binary

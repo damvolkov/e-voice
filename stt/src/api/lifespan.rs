@@ -17,21 +17,18 @@ impl Lifespan {
     pub async fn start(settings: &Settings) -> Result<AppState, NodesError> {
         let (nodes, runtime) = Nodes::start(settings).await?;
         tracing::info!(models = ?settings.models(), mode = ?nodes.asr.mode(), "lifespan.ready");
-        let asr = &settings.stt.pipeline.asr;
-        let models = [Some(asr.model()), asr.offline_model()]
-            .into_iter()
-            .flatten()
-            .map(str::to_owned);
         Ok(AppState {
             runner: Runner::new(Arc::new(nodes), settings.stt.pipeline.clone()),
             lang: settings.stt.lang,
             emotion: settings.server.emotion,
-            models: models.fold(Vec::new(), |mut models, model| {
-                if !models.contains(&model) {
-                    models.push(model);
-                }
-                models
-            }),
+            models: settings
+                .stt
+                .pipeline
+                .asr
+                .selectable()
+                .into_iter()
+                .map(|engine| engine.name().to_owned())
+                .collect(),
             upload: settings.server.upload.saturating_mul(1 << 20),
             runtime,
             shutdown: CancellationToken::new(),

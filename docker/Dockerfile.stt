@@ -23,6 +23,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 ##### BUILD #####
 FROM chef AS builder
+ARG VERSION=""
 ARG PACKAGES="--package e-voice-stt"
 ARG BINS="e-voice"
 COPY Cargo.lock ./
@@ -32,7 +33,7 @@ COPY .cargo .cargo
 COPY --from=planner /src/recipe.json recipe.json
 RUN cargo chef cook --release --locked ${PACKAGES} --recipe-path recipe.json
 COPY . .
-RUN make dist PACKAGES="${PACKAGES}" BINS="${BINS}" DIST=/out
+RUN E_VOICE_VERSION="${VERSION}" make dist PACKAGES="${PACKAGES}" BINS="${BINS}" DIST=/out
 
 ##### RUNTIME #####
 # No make or toolchain here by design: the runtime only needs certificates and an init.
