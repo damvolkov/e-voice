@@ -4,6 +4,10 @@
 export ECLI_STT_URL ECLI_TTS_URL
 MAKEFLAGS += --no-print-directory
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
+# The vendored sherpa-onnx/onnxruntime libraries for every binary cargo runs (tests included), whatever
+# a restored build cache knows about them.
+export LD_LIBRARY_PATH := $(CURDIR)/data/ops/sherpa/lib$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
+export DYLD_LIBRARY_PATH := $(CURDIR)/data/ops/sherpa/lib$(if $(DYLD_LIBRARY_PATH),:$(DYLD_LIBRARY_PATH))
 SHELL := bash
 PREK_VERSION ?= 0.5.4
 ZENSICAL_VERSION ?= 0.0.67
