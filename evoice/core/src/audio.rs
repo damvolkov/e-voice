@@ -171,28 +171,72 @@ impl AudioIngest {
 }
 
 /// Peak normalizer for quiet inputs: instant attack, exponential release, gain in `[1, max]` toward
-/// a target peak. Applied sample by sample, so the result never depends on chunking; it only ever
-/// boosts, so normal-level audio passes untouched once its first peak is seen (the rising edge of the
-/// first wave after silence is lifted for a few milliseconds).
+/// a target peak, never lifting the noise floor above `noise` dBFS (its typical peaks land within
+/// about 2 dB of it). The floor is the quietest 10 ms block peak of the last 1.5 s, digital silence
+/// ignored; until one is known nothing is boosted. So the room or codec noise before the first word,
+/// or after a long pause, reaches the VAD at the level it had, and speech keeps its contrast.
+/// Applied sample by sample, so the result never depends on chunking; it only ever boosts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioGain {
     target: f32,
     max: f32,
+    noise: f32,
     decay: f32,
     peak: f32,
+    block: usize,
+    filled: usize,
+    level: f32,
+    blocks: std::collections::VecDeque<f32>,
+    window: usize,
+    floor: Option<f32>,
 }
 
 impl AudioGain {
-    /// `target_db` and `max_db` in dB (peak dBFS, maximum boost); `release` is the time for the tracked
-    /// peak to fall by 1/e at `rate`. A `max_db` of 0 disables the stage.
+    // ##### PRIVATE #####
+
+    /// Below this a block is digital silence: it says nothing about the noise floor.
+    const SILENT: f32 = 1e-5;
+
+    fn apply_floor(&mut self, sample: f32) {
+        self.level = self.level.max(sample.abs());
+        self.filled = self.filled.saturating_add(1);
+        if self.filled < self.block {
+            return;
+        }
+        if self.level >= Self::SILENT {
+            if self.blocks.len() == self.window {
+                self.blocks.pop_front();
+            }
+            self.blocks.push_back(self.level);
+            self.floor = self.blocks.iter().copied().reduce(f32::min);
+        }
+        (self.filled, self.level) = (0, 0.0);
+    }
+
+    // ##########################################################
+
+    // ##### PUBLIC #####
+
+    /// `target_db`, `max_db` and `noise_db` in dB (peak dBFS, maximum boost, highest level the noise
+    /// floor may be lifted to); `release` is the time for the tracked peak to fall by 1/e at `rate`.
+    /// A `max_db` of 0 disables the stage.
     #[must_use]
-    pub fn new(rate: u32, target_db: f32, max_db: f32, release: std::time::Duration) -> Self {
-        let samples = release.as_secs_f32() * f32::from(u16::try_from(rate / 10).unwrap_or(u16::MAX)) * 10.0;
+    pub fn new(rate: u32, target_db: f32, max_db: f32, noise_db: f32, release: std::time::Duration) -> Self {
+        let per_second = f32::from(u16::try_from(rate / 10).unwrap_or(u16::MAX)) * 10.0;
+        let samples = release.as_secs_f32() * per_second;
+        let block = usize::try_from(rate / 100).unwrap_or(usize::MAX).max(1);
         Self {
             target: 10f32.powf(target_db / 20.0),
             max: 10f32.powf(max_db.max(0.0) / 20.0),
+            noise: 10f32.powf(noise_db / 20.0),
             decay: (-1.0 / samples.max(1.0)).exp(),
             peak: 0.0,
+            block,
+            filled: 0,
+            level: 0.0,
+            blocks: std::collections::VecDeque::with_capacity(150),
+            window: 150,
+            floor: None,
         }
     }
 
@@ -203,8 +247,10 @@ impl AudioGain {
 
     pub fn apply(&mut self, samples: &mut [f32]) {
         for sample in samples.iter_mut() {
+            self.apply_floor(*sample);
             self.peak = sample.abs().max(self.peak * self.decay);
-            let gain = (self.target / self.peak.max(f32::MIN_POSITIVE)).clamp(1.0, self.max);
+            let ceiling = self.floor.map_or(1.0, |floor| (self.noise / floor).min(self.max));
+            let gain = (self.target / self.peak.max(f32::MIN_POSITIVE)).clamp(1.0, ceiling.max(1.0));
             *sample = (*sample * gain).clamp(-1.0, 1.0);
         }
     }
@@ -347,42 +393,96 @@ mod tests {
         (0..samples).map(|n| amplitude * (n as f32 * 0.1).sin()).collect()
     }
 
+    fn noise(amplitude: f32, samples: usize, seed: u32) -> Vec<f32> {
+        let mut state = seed;
+        (0..samples)
+            .map(|_| {
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                amplitude * ((state >> 8) as f32 / 8_388_608.0 - 1.0)
+            })
+            .collect()
+    }
+
+    /// Words of `amplitude` (300 ms each, 80 ms apart) over a noise floor of `floor`.
+    fn speech(amplitude: f32, floor: f32, words: usize) -> Vec<f32> {
+        let word = [tone(amplitude, 4_800), vec![0.0; 1_280]].concat();
+        let words: Vec<f32> = std::iter::repeat_n(word, words).flatten().collect();
+        let hiss = noise(floor, words.len(), 7);
+        words.iter().zip(hiss).map(|(word, hiss)| word + hiss).collect()
+    }
+
+    fn peak(samples: &[f32]) -> f32 {
+        samples.iter().fold(0.0f32, |peak, sample| peak.max(sample.abs()))
+    }
+
+    fn stage(max_db: f32) -> AudioGain {
+        AudioGain::new(16_000, -6.0, max_db, -40.0, Duration::from_secs(5))
+    }
+
     #[test]
-    fn test_gain_lifts_quiet_audio_to_the_target_peak_within_the_cap() {
-        let mut quiet = tone(0.006, 16_000);
-        AudioGain::new(16_000, -6.0, 40.0, Duration::from_secs(5)).apply(&mut quiet);
-        let peak = quiet[1_000..]
-            .iter()
-            .fold(0.0f32, |peak, sample| peak.max(sample.abs()));
-        assert!((0.45..=0.51).contains(&peak), "{peak}");
-        let mut whisper = tone(0.000_1, 16_000);
-        AudioGain::new(16_000, -6.0, 40.0, Duration::from_secs(5)).apply(&mut whisper);
-        let capped = whisper[1_000..]
-            .iter()
-            .fold(0.0f32, |peak, sample| peak.max(sample.abs()));
-        assert!((0.0095..=0.0101).contains(&capped), "{capped}");
+    fn test_gain_never_lifts_the_noise_before_the_first_word_above_the_ceiling() {
+        let lead = noise(0.003, 4_800, 3);
+        let mut signal = [lead, speech(0.28, 0.003, 6)].concat();
+        stage(40.0).apply(&mut signal);
+        assert!(
+            peak(&signal[..4_800]) <= 0.012_6,
+            "noise lifted to {}",
+            peak(&signal[..4_800])
+        );
+        assert!(peak(&signal[4_800..]) > 0.28, "speech still normalized");
+    }
+
+    #[test]
+    fn test_gain_lifts_quiet_speech_as_far_as_its_noise_allows() {
+        let mut quiet = [noise(0.000_7, 3_200, 5), speech(0.009, 0.000_7, 12)].concat();
+        stage(40.0).apply(&mut quiet);
+        let lifted = peak(&quiet[40_000..]);
+        assert!((0.12..=0.16).contains(&lifted), "{lifted}");
+        let mut clean = [noise(0.000_05, 3_200, 5), speech(0.009, 0.000_05, 12)].concat();
+        stage(40.0).apply(&mut clean);
+        let full = peak(&clean[40_000..]);
+        assert!((0.45..=0.51).contains(&full), "{full}");
+    }
+
+    #[test]
+    fn test_gain_keeps_noise_down_through_long_pauses_and_digital_silence() {
+        let mut signal = [
+            vec![0.0; 16_000],
+            noise(0.003, 4_800, 9),
+            speech(0.28, 0.003, 4),
+            noise(0.003, 320_000, 11),
+        ]
+        .concat();
+        stage(40.0).apply(&mut signal);
+        assert!(peak(&signal[16_000..20_800]) <= 0.012_6, "after digital silence");
+        assert!(peak(&signal[signal.len() - 32_000..]) <= 0.012_6, "after 20 s of pause");
     }
 
     #[test]
     fn test_gain_never_attenuates_and_can_be_disabled() {
-        let loud = tone(0.9, 4_000);
+        let loud = speech(0.9, 0.001, 4);
         let mut boosted = loud.clone();
-        AudioGain::new(16_000, -6.0, 40.0, Duration::from_secs(5)).apply(&mut boosted);
-        assert_eq!(boosted[100..], loud[100..]);
-        let mut off = tone(0.003, 4_000);
-        let stage = AudioGain::new(16_000, -6.0, 0.0, Duration::from_secs(5));
-        assert!(!stage.enabled());
+        stage(40.0).apply(&mut boosted);
+        assert!(
+            boosted
+                .iter()
+                .zip(&loud)
+                .all(|(after, before)| after.abs() >= before.abs() - f32::EPSILON)
+        );
+        let mut off = speech(0.003, 0.000_1, 4);
+        let disabled = stage(0.0);
+        assert!(!disabled.enabled());
         let reference = off.clone();
-        stage.clone().apply(&mut off);
+        disabled.clone().apply(&mut off);
         assert_eq!(off, reference);
     }
 
     #[test]
     fn test_gain_does_not_depend_on_chunking() {
-        let signal = [tone(0.002, 8_000), tone(0.3, 4_000), tone(0.01, 8_000)].concat();
+        let signal = [noise(0.002, 8_000, 1), speech(0.3, 0.002, 4), speech(0.01, 0.002, 4)].concat();
         let mut whole = signal.clone();
-        AudioGain::new(16_000, -6.0, 40.0, Duration::from_secs(1)).apply(&mut whole);
-        let mut stage = AudioGain::new(16_000, -6.0, 40.0, Duration::from_secs(1));
+        AudioGain::new(16_000, -6.0, 40.0, -40.0, Duration::from_secs(1)).apply(&mut whole);
+        let mut stage = AudioGain::new(16_000, -6.0, 40.0, -40.0, Duration::from_secs(1));
         let mut pieces = signal;
         pieces.chunks_mut(37).for_each(|chunk| stage.apply(chunk));
         assert_eq!(whole, pieces);

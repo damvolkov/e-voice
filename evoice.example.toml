@@ -25,7 +25,7 @@ tick = "50ms"
 preroll = "2s"                               # audio kept so streaming ASR starts at speech onset
 jobs = 8                                     # segment work in flight across all streams
 gate = { close = "window", idle = "8s" }     # close: utterance | window | session   (wake word only)
-gain = { peak = -6.0, max = 40.0, release = "5s" }   # dBFS target, dB max boost (0 = off)
+gain = { peak = -6.0, max = 40.0, noise = -40.0, release = "5s" }   # dBFS target, dB max boost (0 = off), dBFS the noise floor may reach
 
 [stt.pipeline.denoise]
 backend = "off"                              # off | gtcrn   (streaming speech enhancement before gain and VAD)

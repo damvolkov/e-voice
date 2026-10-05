@@ -57,9 +57,9 @@ impl Settings {
                 "must be positive".to_owned(),
             ),
             (
-                pipeline.gain.peak <= 0.0 && (0.0..=60.0).contains(&pipeline.gain.max),
+                pipeline.gain.peak <= 0.0 && pipeline.gain.noise <= 0.0 && (0.0..=60.0).contains(&pipeline.gain.max),
                 "stt.pipeline.gain",
-                "needs peak <= 0 dBFS and 0 <= max <= 60 dB".to_owned(),
+                "needs peak <= 0 dBFS, noise <= 0 dBFS and 0 <= max <= 60 dB".to_owned(),
             ),
             (
                 unit(ww.threshold()),
@@ -379,6 +379,7 @@ mod tests {
             Some("stt.pipeline.*.threads")
         );
         assert_eq!(invalid("[stt.pipeline.gain]\nmax = 90.0\n"), Some("stt.pipeline.gain"));
+        assert_eq!(invalid("[stt.pipeline.gain]\nnoise = 3.0\n"), Some("stt.pipeline.gain"));
         assert_eq!(
             invalid("[stt.pipeline.ww]\nbackend = \"kws\"\nkeyword = \"hey eager\"\nboost = 2.0\n"),
             None
