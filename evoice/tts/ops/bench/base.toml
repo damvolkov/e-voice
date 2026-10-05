@@ -1,0 +1,3 @@
+# Default: Pocket base (6 layers), int8, 2 threads per stream.
+[tts.synth]
+backend = "pocket"

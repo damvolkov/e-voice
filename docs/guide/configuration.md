@@ -1,7 +1,9 @@
 # Configuration
 
-`evoice.toml` in the working directory (or `--config path`), then `EVOICE_<SECTION>__<KEY>` environment
-overrides, e.g. `EVOICE_STT__PIPELINE__ASR__CHUNK=560ms`.
+One `evoice.toml` for both services, in the working directory (or `--config path`), then
+`EVOICE_<SECTION>__<KEY>` environment overrides, e.g. `EVOICE_STT__PIPELINE__ASR__CHUNK=560ms` or
+`EVOICE_TTS__SYNTH__WORKERS=8`. `[server]` is shared; each service validates its own section and keeps
+the other's untouched, so a typo in a top-level name still fails.
 
 The configuration is a contract:
 
@@ -15,8 +17,9 @@ The configuration is a contract:
 
 | Section | Governs |
 |---|---|
-| `[server]` | bind address, upload cap, emotion exposure, logging |
+| `[server]` | bind address and logging, for every service |
 | `[stt]` | default language |
+| `[stt.api]` | STT port (5500), upload cap, emotion exposure |
 | `[stt.pipeline]` | backpressure, stall timeout, tick, pre-roll, concurrent jobs, gate, gain |
 | `[stt.pipeline.denoise]` | speech enhancement before gain and VAD |
 | `[stt.pipeline.ww]` | wake word gate |
@@ -25,7 +28,11 @@ The configuration is a contract:
 | `[stt.pipeline.asr]` | live and file ASR |
 | `[stt.pipeline.ser]` | emotion recognition |
 | `[stt.ops]` | data root, model manifest, verification depth |
-| `[tts]` | reserved |
+| `[tts]` | default language and voice |
+| `[tts.api]` | TTS port (5600), voice-upload cap |
+| `[tts.text]` | sentence sizes for synthesis |
+| `[tts.synth]` | backend, model size, threads and workers per stream, sampling |
+| `[tts.ops]` | data root (models, voices, exports), model manifest, verification depth |
 
 ## Every key with its default
 
@@ -55,3 +62,22 @@ The template below is `evoice.example.toml`; a test asserts it equals the built-
 `ser.backend`
 :   `emotion2vec-large` needs the local export (`make export`). `off` removes the cost; the per-request
     `emotion=off` only hides the field.
+
+`tts.synth.workers`
+:   Concurrent streams per language; each holds its own onnxruntime sessions with `threads` threads.
+    Pocket base int8 runs ≈ 3× real time per stream on 2 threads, so `workers × threads` should stay
+    under the physical cores. A stream beyond `workers` gets 503 before any audio.
+
+`tts.text.max`
+:   Pocket tends to end a long sentence early at a clause boundary (upstream torch does the same);
+    sentences longer than `max` chars are cut at `, ; :` first, which keeps every clause. 80 is measured.
+
+`tts.synth.backend`
+:   `pocket` (default: fastest, ≈ 3× real time per stream), `qwen3` (best intelligibility and
+    similarity, ≈ real time per stream: one or two workers), `neutts` (needs `make neutts`,
+    `espeak-ng` and voices learned with their transcript). `temperature` unset uses each backend's
+    upstream default.
+
+`tts.voice`
+:   No backend speaks without a voice prompt. Learn one (`e-voice-tts voice add <id> <files>`) and
+    set it here; it is primed at startup.

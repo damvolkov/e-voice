@@ -10,7 +10,7 @@ GET /v1/stream?lang=es&rate=48000&encoding=s16le&view=struct&emotion=field
 | `rate` | 16000 | sample rate of the binary frames (resampled to 16 kHz) |
 | `encoding` | `s16le` | `s16le`, `f32le`, mono |
 | `view` | `struct` | `struct`: one JSON event per frame · `flat`: one text frame per final |
-| `emotion` | `server.emotion` | `field`, `tag`, `off` |
+| `emotion` | `stt.api.emotion` | `field`, `tag`, `off` |
 
 **Client → server.** Binary frames carry PCM audio of any size. The text frame `{"type":"end"}`
 drains pending segments. Closing the socket cancels the run.

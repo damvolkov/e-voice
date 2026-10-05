@@ -42,7 +42,7 @@ default_stt_model = "parakeet"
   - `openaiaudio`: `{endpoint}/audio/transcriptions`;
   - `deepgram`: `{endpoint}/listen?model=…`;
   - `elevenlabs`: `{endpoint}/speech-to-text`.
-- **Responses.** OpenHuman reads only the text. Set `server.emotion = "tag"` to keep emotion in what
+- **Responses.** OpenHuman reads only the text. Set `stt.api.emotion = "tag"` to keep emotion in what
   it reads (`[angry] …`).
 - **Engine.** `evoice:whisper` selects Whisper for that route when it is in `offline.choices`.
 - **Language.** Dictation sends no language, so the server's `stt.lang` applies. Parakeet and Whisper

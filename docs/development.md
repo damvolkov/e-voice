@@ -3,15 +3,25 @@
 ## Layout
 
 ```
-stt/                    the service (crate e-voice-stt, binary e-voice)
-├── src/                api · config · core · schema · workflow · ops · main.rs
-├── tests/              workflow · api · ops
-├── ops/                sherpa.sh, bench.sh, bench/*.toml
-└── models.toml
-cli/                    ecli, the terminal tester
-eval/                   Python (uv): dataset fetch, scoring, report; export/ scripts
+evoice/                 the services and their shared core (Rust crates)
+├── core/               crate e-voice-core: settings loader, model store, runtime, audio, logger, probe
+│   ├── link.rs         build script of every binary (rpath to data/ops/sherpa/lib, version)
+│   └── ops/sherpa.sh   vendors the pinned sherpa-onnx + onnxruntime libraries into data/ops/sherpa
+├── stt/                speech to text (crate e-voice-stt, binary e-voice)
+│   ├── src/            api · config · core · schema · workflow (session, runner, ww/ vad/ asr/ ser/) · ops
+│   ├── tests/          workflow, api, ops
+│   ├── ops/            bench.sh, bench/*.toml
+│   └── models.toml
+└── tts/                text to speech (crate e-voice-tts, binary e-voice-tts)
+    ├── src/            api · config · core (voices, encode) · schema · workflow (session, runner, synth/) · ops
+    ├── tests/          workflow (conformance, backends), api, ops
+    ├── ops/            bench.sh, bench/*.toml
+    └── models.toml
+cli/                    ecli: microphone → STT, TTS → speaker
 docker/                 Dockerfile.{full,stt,tts} (+ .dockerignore each), compose.{full,stt,tts}.yml
+eval/                   Python (uv): dataset fetch, scoring, reports; export/ (model side only)
 docs/                   this site (Zensical); docs/history: dated decisions and measurements
+data/                   ignored: ops/{target,sherpa,hf}, stt/{models,ops}, tts/{models,voices,ops}
 ```
 
 ## Gates

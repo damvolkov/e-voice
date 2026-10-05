@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
-# Every service in one container (e-voice:full, :5500). Today that is STT; TTS joins through
-# PACKAGES, BINS and its manifest once its crate lands.
+# Every service in one container (e-voice:full): STT on :5500 and TTS on :5600, run by docker/full.sh.
+# TTS defaults to Qwen3 here: the only backend a container can install by itself (public weights).
 # Build context is the repository root. Build steps are the Makefile's: `system`, `sherpa`, `dist`.
 
 ##### BASES #####
@@ -25,10 +25,10 @@ RUN cargo chef prepare --recipe-path recipe.json
 ##### BUILD #####
 FROM chef AS builder
 ARG VERSION=""
-ARG PACKAGES="--package e-voice-stt"
-ARG BINS="e-voice"
+ARG PACKAGES="--package e-voice-stt --package e-voice-tts"
+ARG BINS="e-voice e-voice-tts"
 COPY Cargo.lock ./
-COPY stt/ops/sherpa.sh stt/ops/sherpa.sh
+COPY evoice/core/ops/sherpa.sh evoice/core/ops/sherpa.sh
 RUN make sherpa
 COPY .cargo .cargo
 COPY --from=planner /src/recipe.json recipe.json
@@ -40,21 +40,28 @@ RUN E_VOICE_VERSION="${VERSION}" make dist PACKAGES="${PACKAGES}" BINS="${BINS}"
 # No make or toolchain here by design: the runtime only needs certificates and an init.
 FROM ${RUNTIME}
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates tini \
+ && apt-get install -y --no-install-recommends ca-certificates espeak-ng tini \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 10001 evoice \
  && mkdir -p /data/stt /data/tts && chown -R evoice:evoice /data
 COPY --from=builder /out/ /app/
-COPY stt/models.toml /app/stt/models.toml
+COPY evoice/stt/models.toml /app/stt/models.toml
+COPY evoice/tts/models.toml /app/tts/models.toml
+COPY --chmod=755 docker/full.sh /app/bin/e-voice-full
 ENV PATH=/app/bin:$PATH \
     EVOICE_STT__OPS__DATA=/data/stt \
     EVOICE_STT__OPS__MANIFEST=/app/stt/models.toml \
+    EVOICE_TTS__OPS__DATA=/data/tts \
+    EVOICE_TTS__OPS__MANIFEST=/app/tts/models.toml \
+    EVOICE_TTS__SYNTH__BACKEND=qwen3 \
+    EVOICE_TTS__SYNTH__WORKERS=2 \
+    EVOICE_TTS__SYNTH__THREADS=4 \
     EVOICE_SERVER__LOG__FORMAT=json
 WORKDIR /app
 USER evoice
 VOLUME ["/data/stt", "/data/tts"]
-EXPOSE 5500
-HEALTHCHECK --interval=15s --timeout=3s --start-period=120s --retries=3 \
-  CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5500 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"ok\"' <&3"]
-ENTRYPOINT ["tini", "--", "e-voice"]
+EXPOSE 5500 5600
+HEALTHCHECK --interval=15s --timeout=3s --start-period=180s --retries=3 \
+  CMD ["bash", "-c", "for port in 5500 5600; do exec 3<>/dev/tcp/127.0.0.1/$port && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"ok\"' <&3 || exit 1; exec 3>&-; done"]
+ENTRYPOINT ["tini", "-g", "--", "e-voice-full"]
 CMD ["serve"]

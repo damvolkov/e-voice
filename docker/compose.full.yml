@@ -1,8 +1,9 @@
 ##### E-VOICE · FULL #####
-# Every service in one container on :5500. Run from the repository root:
+# Every service in one container: STT on :5500, TTS on :5600. Run from the repository root:
 #   docker compose -f docker/compose.full.yml up -d      (or: make up)
 # Models live in named volumes, or host directories via EVOICE_STT_DATA / EVOICE_TTS_DATA (absolute paths).
-# Settings: environment (EVOICE_<SECTION>__<KEY>) or a mounted /app/evoice.toml.
+# Settings: environment (EVOICE_<SECTION>__<KEY>) or a mounted /app/evoice.toml. TTS runs Qwen3; for
+# Pocket, run `make pocket` on the host and set EVOICE_TTS_BACKEND=pocket (its exports are mounted).
 name: e-voice
 
 services:
@@ -14,9 +15,13 @@ services:
     command: ["pull"]
     environment: &settings
       EVOICE_STT__LANG: ${EVOICE_LANG:-es}
-    volumes: &data
+      EVOICE_TTS__LANG: ${EVOICE_LANG:-es}
+      EVOICE_TTS__VOICE: ${EVOICE_TTS_VOICE:-}
+      EVOICE_TTS__SYNTH__BACKEND: ${EVOICE_TTS_BACKEND:-qwen3}
+    volumes:
       - ${EVOICE_STT_DATA:-e-voice-stt}:/data/stt
       - ${EVOICE_TTS_DATA:-e-voice-tts}:/data/tts
+      - ../data/tts/ops/exports:/app/data/tts/ops/exports:ro
     restart: "no"
 
   evoice:
@@ -25,9 +30,12 @@ services:
       pull:
         condition: service_completed_successfully
     environment: *settings
-    volumes: *data
+    volumes:
+      - ${EVOICE_STT_DATA:-e-voice-stt}:/data/stt
+      - ${EVOICE_TTS_DATA:-e-voice-tts}:/data/tts
     ports:
       - "${EVOICE_PORT:-5500}:5500"
+      - "${EVOICE_TTS_PORT:-5600}:5600"
     stop_grace_period: 30s
     restart: unless-stopped
 

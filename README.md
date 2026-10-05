@@ -5,7 +5,7 @@
 <h1 align="center">e-voice</h1>
 
 <p align="center">
-  <strong>CPU-first speech service in Rust — streaming STT with emotion on every segment, behind OpenAI, Deepgram and ElevenLabs compatible APIs.</strong>
+  <strong>CPU-first speech services in Rust — streaming STT with emotion on every segment, and streaming TTS that speaks in a learned voice, behind OpenAI-compatible APIs.</strong>
 </p>
 
 <p align="center">
@@ -37,6 +37,20 @@ audio ─▶ [denoise] ─▶ AGC ─▶ [ww] ─▶ VAD ─▶ [lid] ─▶ ASR
 
 Spanish and English; sherpa-onnx and `ort` share one `libonnxruntime.so`; no GPU.
 
+And its mirror, the TTS service (`e-voice-tts`, :5600):
+
+```
+text deltas ─▶ sentences ─▶ Pocket TTS (frame by frame, 80 ms) ─▶ PCM while it is generated ─▶ WS · OpenAI speech · SSE
+```
+
+| Piece | What |
+|---|---|
+| backends | `pocket` (default) — Kyutai Pocket TTS 100M, our autoregressive loop on `ort`, ≈ 3× real time per stream · `qwen3` — Qwen3-TTS 0.6B, closer to the speaker (similarity 0.74 vs 0.69) and better Spanish WER, ≈ real time per stream · `neutts` — NeuTTS Nano (gated, revenue-capped licence, espeak-ng). Only real streaming backends pass the port's conformance test |
+| voices | learned from 10–30 s of audio (`e-voice-tts voice add <id> <files> [--text …]` or `POST /v1/voices`), stored backend-independent, used by id everywhere |
+| latency | first audio ≈ 70–120 ms on a warm stream; ≈ 3× real time per stream on 2 threads; `cancel` barges in within one frame |
+
+Three crates, independent but combinable: `core` (settings, model store, runtime, audio), `stt`, `tts`.
+
 ## Quickstart
 
 ```bash
@@ -44,14 +58,20 @@ make install             # OS packages, pinned Rust (rust-toolchain.toml), uv, p
 make setup               # sherpa toolkit + the models the config declares → data/stt
 make serve               # gateway on :5500, docs at http://127.0.0.1:5500/docs
 make stt ARGS="--flat"   # another terminal: talk; Ctrl+C to finish (--struct for JSON events)
+
+make pocket                                      # TTS: export the gated Pocket checkpoints (HF token in data/ops/hf) and install them
+make voice ID=damien FILES=me.mp3   # learn a voice
+EVOICE_TTS__VOICE=damien make speak              # TTS gateway on :5600
+make tts ARGS='"Hola, soy Demian." --voice damien'   # hear it; without text, every typed line streams
 ```
 
 With Docker — everything under [`docker/`](docker), one Dockerfile and one compose per deployment:
 
 ```bash
-make up                  # MODE=full (default): every service in one container on :5500
+make up                  # MODE=full (default): STT on :5500 and TTS on :5600 in one container
 make up MODE=stt         # the STT service alone on :5500
-make up MODE=split       # stt on :5500 + tts on :5600 (tts is a template until its crate exists)
+make up MODE=tts         # the TTS service alone on :5600 (Qwen3; Pocket after `make pocket`)
+make up MODE=split       # stt on :5500 + tts on :5600
 make down [MODE=…]
 ```
 
@@ -59,7 +79,7 @@ make down [MODE=…]
 |---|---|---|---|
 | `full` | `docker/Dockerfile.full` | `docker/compose.full.yml` | `e-voice:full` |
 | `stt` | `docker/Dockerfile.stt` | `docker/compose.stt.yml` | `e-voice:stt` |
-| `tts` (template) | `docker/Dockerfile.tts` | `docker/compose.tts.yml` | `e-voice:tts` |
+| `tts` | `docker/Dockerfile.tts` | `docker/compose.tts.yml` | `e-voice:tts` |
 
 Each Dockerfile is two-stage (cargo-chef builder → debian-slim runtime, non-root, tini, healthcheck)
 with its own `.dockerignore` beside it. A one-shot `pull` service installs the configured models into
@@ -94,7 +114,7 @@ Anthropic has no speech-to-text API, so there is nothing to mirror.
 
 ### Emotion
 
-`server.emotion` sets the default; every endpoint accepts `emotion=field|tag|off` per request.
+`stt.api.emotion` sets the default; every endpoint accepts `emotion=field|tag|off` per request.
 
 | Mode | Effect |
 |---|---|
@@ -128,7 +148,7 @@ print(client.audio.transcriptions.create(model="whisper-1", file=open("a.mp3", "
 
 - **OpenHuman** — voice provider with `endpoint = "http://127.0.0.1:5500/v1"`, `capability = "stt"` and
   `stt_api_style` = `openaiaudio` (default), `deepgram` or `elevenlabs`. It reads only `text`: set
-  `server.emotion = "tag"` to keep emotion in the transcript.
+  `stt.api.emotion = "tag"` to keep emotion in the transcript.
 - **Hermes** — its OpenAI STT provider with `stt.openai.base_url = "http://127.0.0.1:5500/v1"`.
 
 ## ecli
@@ -147,17 +167,22 @@ digital silence. Bluetooth headsets expose their microphone only in the headset 
 
 ## Configuration
 
-`evoice.toml` in the working directory (or `--config path`), overridden by `EVOICE_<SECTION>__<KEY>`
-(e.g. `EVOICE_STT__PIPELINE__ASR__CHUNK=560ms`). [`evoice.example.toml`](evoice.example.toml) lists
-every key with its default and every accepted value:
+One `evoice.toml` for both services, in the working directory (or `--config path`), overridden by
+`EVOICE_<SECTION>__<KEY>` (e.g. `EVOICE_STT__PIPELINE__ASR__CHUNK=560ms`).
+[`evoice.example.toml`](evoice.example.toml) lists every key with its default and every accepted value:
 
 ```
-[server]                     host, port, upload, emotion, log
+[server]                     host, log (shared)
 [stt]                        lang
+[stt.api]                    port, upload, emotion
 [stt.pipeline]               pending, overload, stall, tick, preroll, jobs, gate, gain
 [stt.pipeline.ww|vad|asr|ser] backend + its knobs
 [stt.ops]                    data, manifest, verify
-[tts]                        reserved
+[tts]                        lang, voice
+[tts.api]                    port, upload
+[tts.text]                   min, max (sentence sizes)
+[tts.synth]                  backend, size, threads, workers, temperature, steps, quantized
+[tts.ops]                    data, manifest, verify
 ```
 
 Choices are closed enums. An unknown backend, key or out-of-range value stops the service at startup.
@@ -172,7 +197,8 @@ voices, decoys and real speech as negatives, every threshold × boost — and pr
 
 ## Models
 
-[`stt/models.toml`](stt/models.toml) pins every artifact by URL (Hugging Face by commit) and sha256.
+[`evoice/stt/models.toml`](evoice/stt/models.toml) and [`evoice/tts/models.toml`](evoice/tts/models.toml) pin every artifact by URL
+(Hugging Face by commit, or `file://` for local exports) and sha256.
 `e-voice pull` installs atomically with a per-file digest stamp: pipeline models into
 `data/stt/models` (the Docker volume), tool and test models into `data/stt/ops/models`. `serve` never
 downloads and refuses to start on a missing or stale model; `e-voice verify --full` re-hashes everything.
@@ -180,23 +206,25 @@ downloads and refuses to start on a missing or stale model; `e-voice verify --fu
 ## Layout
 
 ```
-stt/                    the service (crate e-voice-stt, binary e-voice)
-├── src/
-│   ├── main.rs         serve | pull | verify | bench | wake
-│   ├── api/            gateway: live bridge, batch, openai/ deepgram/ elevenlabs/ native/, docs
-│   ├── config/         one typed section per node and domain
-│   ├── core/           settings, models, audio, runtime, logger
-│   ├── schema/         contracts: audio, lang, emotion, segment, event, transcript, error
-│   ├── workflow/       session (sans-IO state machine), runner, nodes; ww/ vad/ asr/ ser/
-│   └── ops/            internal tooling: bench, wake calibration, voice synthesis
-├── tests/              workflow, api, ops
-├── ops/                sherpa.sh, bench.sh, bench/*.toml
-└── models.toml
-cli/                    ecli: microphone → /v1/stream tester
+evoice/                 the services and their shared core (Rust crates)
+├── core/               crate e-voice-core: settings loader, model store, runtime, audio, logger, probe
+│   ├── link.rs         build script of every binary (rpath to data/ops/sherpa/lib, version)
+│   └── ops/sherpa.sh   vendors the pinned sherpa-onnx + onnxruntime libraries into data/ops/sherpa
+├── stt/                speech to text (crate e-voice-stt, binary e-voice)
+│   ├── src/            api · config · core · schema · workflow (session, runner, ww/ vad/ asr/ ser/) · ops
+│   ├── tests/          workflow, api, ops
+│   ├── ops/            bench.sh, bench/*.toml
+│   └── models.toml
+└── tts/                text to speech (crate e-voice-tts, binary e-voice-tts)
+    ├── src/            api · config · core (voices, encode) · schema · workflow (session, runner, synth/) · ops
+    ├── tests/          workflow (conformance, backends), api, ops
+    ├── ops/            bench.sh, bench/*.toml
+    └── models.toml
+cli/                    ecli: microphone → STT, TTS → speaker
 docker/                 Dockerfile.{full,stt,tts} (+ .dockerignore each), compose.{full,stt,tts}.yml
-eval/                   Python (uv): dataset fetch, scoring, report
-data/                   ignored: ops/target (cargo), stt/models, stt/ops/{sherpa,models,datasets,results}
-docs/history/           dated decisions and measurements
+eval/                   Python (uv): dataset fetch, scoring, reports; export/ (model side only)
+docs/                   this site (Zensical); docs/history: dated decisions and measurements
+data/                   ignored: ops/{target,sherpa,hf}, stt/{models,ops}, tts/{models,voices,ops}
 ```
 
 Adding a backend: a file in its node folder, a variant in `config/<node>.rs`, an arm in the registry.
@@ -206,8 +234,10 @@ Adding a backend: a file in its node folder, a variant in `config/<node>.rs`, an
 ```bash
 make setup ARGS=--all    # tool and test models too
 make datasets            # FLEURS es/en, MESD es, CREMA-D en, pinned by commit
-make bench               # stt/ops/bench/*.toml × datasets, file and live modes
+make bench               # evoice/stt/ops/bench/*.toml × datasets, file and live modes
 make report              # WER, CER, SER accuracy / F1 / angry recall, RTF, latency, CPU, RSS
+make bench SERVICE=tts   # evoice/tts/ops/bench/*.toml × FLEURS texts, 1/4/8 streams, then the STT round trip
+make report SERVICE=tts  # WER of what STT hears, speaker similarity, first-audio latency, RTF, throughput
 ```
 
 Current numbers and why the defaults are what they are: [docs/history/2026-10-benchmark.md](docs/history/2026-10-benchmark.md).

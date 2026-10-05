@@ -1,0 +1,754 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "e-voice TTS",
+    "description": "CPU-first streaming text-to-speech. Text in (whole or token by token), audio out while it is generated: every backend streams frame by frame. Voices are learned from a few seconds of audio (`/v1/voices`) and used by id in every endpoint.",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Liveness, the service version (its release tag), the onnxruntime loaded and the output rate.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/audio/speech": {
+      "post": {
+        "tags": [
+          "openai"
+        ],
+        "summary": "Speaks `input`, streaming audio while later sentences are still being generated.",
+        "description": "# Errors\nAn unsupported format or language, empty input, an unreadable default voice, or no free worker.",
+        "operationId": "speech",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeechRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "audio bytes (wav, pcm or f32) or SSE `speech.audio.delta` events"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "every worker is busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "tags": [
+          "openai"
+        ],
+        "summary": "The loaded synthesis models (one per language).",
+        "operationId": "models",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/stream": {
+      "get": {
+        "tags": [
+          "native"
+        ],
+        "summary": "Native streaming synthesis: send text as it arrives, receive PCM as it is generated.",
+        "description": "Text frames in: `{\"type\":\"text\",\"text\":\"…\"}`, `flush`, `cancel` (barge-in), `close`. Out: `ready`,\nthen per sentence `start`, binary audio frames (one per 80 ms), `end`; `closed` last. The voice is\nprimed before the upgrade, so a busy server or an unknown voice fails as plain HTTP.\n\n# Errors\nAn unsupported format or language, an unreadable default voice, or no free worker.",
+        "operationId": "stream",
+        "parameters": [
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "voice",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "`pcm` (s16le, default) or `f32` binary frames.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "WebSocket upgrade"
+          },
+          "503": {
+            "description": "every worker is busy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/voices": {
+      "get": {
+        "tags": [
+          "voices"
+        ],
+        "summary": "Learned voices, usable as `voice` in every endpoint.",
+        "description": "# Errors\nThe voices directory cannot be read.",
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "voices"
+        ],
+        "summary": "Learns a voice from one or more clips of the same speaker (multipart: `voice_id`, then `file`\nparts in any container `ffmpeg` would call common: wav, mp3, m4a, flac, ogg, webm). Clean speech,\n5-30 s in total; anything past 30 s is ignored. Replaces a voice with the same id.",
+        "description": "# Errors\nA malformed form, undecodable audio, a backend that cannot learn voices, or a failed write.",
+        "operationId": "create",
+        "requestBody": {
+          "description": "`voice_id` text field and one or more `file` parts",
+          "content": {
+            "multipart/form-data": {}
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "the backend cannot learn voices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/voices/{voice_id}": {
+      "delete": {
+        "tags": [
+          "voices"
+        ],
+        "summary": "Forgets a learned voice.",
+        "description": "# Errors\nAn invalid or unknown id.",
+        "operationId": "remove",
+        "parameters": [
+          {
+            "name": "voice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AudioFormat": {
+        "type": "string",
+        "description": "Wire format of synthesized audio. `wav` is 16-bit PCM behind a streaming header (sizes unknown,\nset to the maximum, as every streaming WAV writer does).",
+        "enum": [
+          "pcm",
+          "f32",
+          "wav"
+        ]
+      },
+      "ClientMessage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Any amount of text, e.g. one LLM token; sentences are cut server-side.",
+            "required": [
+              "text",
+              "type"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Speak what is buffered even without a sentence end.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "flush"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Barge-in: stop the current sentence and drop everything queued.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "cancel"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Speak the rest, then close.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "close"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Client → server text frames."
+      },
+      "ErrorBody": {
+        "type": "object",
+        "description": "Error body in the OpenAI shape: `{\"error\": {\"message\", \"type\"}}`.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        }
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "required": [
+          "message",
+          "type"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "onnxruntime",
+          "rate"
+        ],
+        "properties": {
+          "onnxruntime": {
+            "type": "string"
+          },
+          "rate": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "Lang": {
+        "type": "string",
+        "description": "Spoken language, fixed by configuration per stream.",
+        "enum": [
+          "es",
+          "en"
+        ]
+      },
+      "ModelCard": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "owned_by"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string"
+          },
+          "owned_by": {
+            "type": "string"
+          }
+        }
+      },
+      "ModelList": {
+        "type": "object",
+        "required": [
+          "object",
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelCard"
+            }
+          },
+          "object": {
+            "type": "string"
+          }
+        }
+      },
+      "NodeError": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "timeout"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "stalled"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "overload"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cancelled"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "detail",
+              "kind"
+            ],
+            "properties": {
+              "detail": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "backend"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Why a node produced no result for a segment."
+      },
+      "ServerMessage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "rate",
+              "format",
+              "lang",
+              "type"
+            ],
+            "properties": {
+              "format": {
+                "$ref": "#/components/schemas/AudioFormat"
+              },
+              "lang": {
+                "$ref": "#/components/schemas/Lang"
+              },
+              "rate": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ready"
+                ]
+              },
+              "voice": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sentence",
+              "text",
+              "type"
+            ],
+            "properties": {
+              "sentence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "start"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sentence",
+              "type"
+            ],
+            "properties": {
+              "error": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/NodeError"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sentence": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "end"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "message",
+              "type"
+            ],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "closed"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Server → client text frames; audio travels as binary frames between `start` and `end`."
+      },
+      "SpeechRequest": {
+        "type": "object",
+        "description": "OpenAI `POST /v1/audio/speech`. `voice` is a learned voice id; any other name (OpenAI presets\nsuch as `alloy`) speaks with the default voice. `response_format`: `wav` (default), `pcm`\n(24 kHz s16le, like OpenAI) or `f32`; compressed formats are not offered. `model` and `speed`\nare accepted and ignored; `language` (extension) overrides the default language.",
+        "required": [
+          "input"
+        ],
+        "properties": {
+          "input": {
+            "type": "string"
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "response_format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "speed": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "stream_format": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StreamFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "voice": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "StreamFormat": {
+        "type": "string",
+        "description": "How the audio is delivered: raw bytes as they are generated, or server-sent events.",
+        "enum": [
+          "audio",
+          "sse"
+        ]
+      },
+      "VoiceCreated": {
+        "type": "object",
+        "required": [
+          "voice_id",
+          "seconds"
+        ],
+        "properties": {
+          "seconds": {
+            "type": "number",
+            "format": "double",
+            "description": "Seconds of audio the voice was learned from."
+          },
+          "voice_id": {
+            "type": "string"
+          }
+        }
+      },
+      "VoiceList": {
+        "type": "object",
+        "required": [
+          "voices"
+        ],
+        "properties": {
+          "voices": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "native",
+      "description": "e-voice streaming synthesis over WebSocket"
+    },
+    {
+      "name": "openai",
+      "description": "OpenAI Audio API: speech (streamed bytes or SSE)"
+    },
+    {
+      "name": "voices",
+      "description": "Voices learned from audio clips"
+    },
+    {
+      "name": "service",
+      "description": "Health"
+    }
+  ]
+}

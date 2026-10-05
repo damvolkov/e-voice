@@ -1,0 +1,55 @@
+[package]
+name = "e-voice-tts"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+description = "e-voice text-to-speech: CPU-first streaming synthesis behind OpenAI-compatible APIs"
+license = "MIT"
+build = "../core/link.rs"
+
+[lib]
+name = "e_voice_tts"
+
+[[bin]]
+name = "e-voice-tts"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8.9", features = ["multipart", "ws"] }
+base64 = "0.23.1"
+clap = { version = "4.6.7", features = ["derive"] }
+e-voice-core = { path = "../core" }
+futures-util = "0.3.34"
+npyz = "0.9.1"
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-27", "tracing"] }
+rand = "0.10.3"
+rand_distr = "0.6.0"
+realfft = "3.5.0"
+safetensors = "0.8.0"
+sentencepiece = "0.14.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sherpa-onnx = { version = "1.13.8", default-features = false, features = ["shared"] }
+thiserror = "2.0.21"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "fs", "io-util", "signal", "sync", "time"] }
+tokio-util = "0.7.19"
+tower-http = { version = "0.7.1", features = ["cors"] }
+tracing = "0.1.44"
+unicode-segmentation = "1.13.3"
+utoipa = { version = "6.0.0", features = ["axum_extras"] }
+utoipa-scalar = { version = "0.4.0", features = ["axum"] }
+
+[dev-dependencies]
+figment = { version = "0.10.19", features = ["test", "toml", "env"] }
+futures-util = "0.3.34"
+npyz = { version = "0.9.1", features = ["npz"] }
+proptest = "1.11.0"
+reqwest = { version = "0.13.5", default-features = false, features = ["multipart", "json"] }
+serde_json = "1.0.151"
+tempfile = "3.27.0"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio-tungstenite = "0.30.0"
+
+[lints]
+workspace = true

@@ -1,0 +1,3 @@
+# Pocket large (24 layers, Spanish): more quality for ~4x the compute per frame.
+[tts.synth]
+size = "large"
