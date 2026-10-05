@@ -376,7 +376,7 @@ impl Runner {
         let mut stream = Stream {
             asr,
             denoise,
-            gain: AudioGain::new(RATE, gain.peak, gain.max, gain.release),
+            gain: AudioGain::new(RATE, gain.peak, gain.max, gain.noise, gain.release),
             session: Session::new(plan),
             route: GateRoute::Wake,
             ww,

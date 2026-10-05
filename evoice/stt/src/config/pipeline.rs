@@ -46,13 +46,14 @@ impl Default for GateConfig {
     }
 }
 
-/// Input gain ahead of every node: peak target in dBFS, maximum boost in dB (0 disables), and how
-/// fast the tracked peak decays.
+/// Input gain ahead of every node: peak target in dBFS, maximum boost in dB (0 disables), the
+/// highest level in dBFS the noise floor may be lifted to, and how fast the tracked peak decays.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct GainConfig {
     pub peak: f32,
     pub max: f32,
+    pub noise: f32,
     #[serde(with = "humantime_serde")]
     pub release: Duration,
 }
@@ -62,6 +63,7 @@ impl Default for GainConfig {
         Self {
             peak: -6.0,
             max: 40.0,
+            noise: -40.0,
             release: Duration::from_secs(5),
         }
     }

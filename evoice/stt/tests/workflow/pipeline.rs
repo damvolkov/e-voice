@@ -152,3 +152,28 @@ async fn test_gain_rescues_a_quiet_microphone() {
     assert_eq!(done.len(), 2, "{done:?}");
     assert!(done.iter().all(|f| f.text.starts_with("No preguntes")), "{done:?}");
 }
+
+/// Regression for the AGC lifting pre-speech noise. The reproduction is a personal voice, so it stays
+/// a local sample (`data/stt/ops/samples/agc-onset.wav`, never committed); where it is absent the
+/// test says so and stops. The mechanism itself is unit-tested in `e_voice_core::audio`.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires installed models and the local sample data/stt/ops/samples/agc-onset.wav"]
+async fn test_live_keeps_the_first_words_after_quiet_codec_residue() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/stt/ops/samples/agc-onset.wav");
+    let Ok(bytes) = std::fs::read(&path) else {
+        eprintln!("skipped: no local sample at {}", path.display());
+        return;
+    };
+    let clip = e_voice_core::audio::AudioFile::decode(bytes, Some("wav"), 16_000).unwrap();
+    let events = transcribe(Settings::default(), clip).await;
+    let onset = events
+        .iter()
+        .find_map(|event| match event {
+            Event::Speech(speech) => Some(speech.at as f32 / 16_000.0),
+            _ => None,
+        })
+        .unwrap();
+    assert!(onset < 0.6, "speech detected at {onset} s");
+    let first = finals(&events)[0].text.to_lowercase();
+    assert!(first.starts_with("hola"), "{first}");
+}
