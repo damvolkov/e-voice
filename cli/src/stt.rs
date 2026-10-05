@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
-use crate::mic::{Mic, MicError};
+use crate::mic::{MONITOR, Mic, MicError};
 use crate::wav::Wav;
 
 const CLEAR: &str = "\r\x1b[2K";
@@ -220,7 +220,7 @@ impl SttArgs {
             None => {
                 let mic = Mic::open(self.device.as_deref(), chunks_tx)?;
                 eprintln!("{DIM}ecli · {} · {} Hz · Ctrl+C to finish{RESET}", mic.name, mic.rate);
-                if mic.name.starts_with("Monitor of") {
+                if mic.name.starts_with(MONITOR) {
                     eprintln!(
                         "ecli: {:?} is a playback monitor (what your speakers play), not a microphone; pick one with --device (see `ecli devices`)",
                         mic.name

@@ -1,6 +1,9 @@
 .DEFAULT_GOAL := help
-# Local, untracked overrides (e.g. ECLI_STT_URL / ECLI_TTS_URL for `make stt` / `make tts` against a deployed gateway).
+# Gateways `make stt` / `make tts` talk to: the deployed e-voice (STT :45140, TTS :45150). Override per call
+# (`make stt ECLI_STT_URL=ws://127.0.0.1:5500`, or ARGS="--url …") or in an untracked .env.
 -include .env
+ECLI_STT_URL ?= ws://127.0.0.1:45140
+ECLI_TTS_URL ?= ws://127.0.0.1:45150
 export ECLI_STT_URL ECLI_TTS_URL
 MAKEFLAGS += --no-print-directory
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
@@ -122,13 +125,13 @@ annex:  ## benchmark annex (table, CSV, charts) of every results file: make anne
 serve: sherpa  ## run the gateway (release) [args forwarded]
 	@cargo run -q --release -p e-voice-stt -- $(CONFIGURED) serve $(ARGS)
 
-stt:  ## live mic transcription: make stt ARGS="--flat | --struct [--lang es]" (gateway: ECLI_STT_URL, default ws://127.0.0.1:5500)
+stt:  ## live mic transcription: make stt ARGS="--flat | --struct [--lang es]" (gateway: ECLI_STT_URL, default ws://127.0.0.1:45140)
 	@cargo run -q --release -p ecli -- stt $(ARGS)
 
 speak: sherpa  ## run the TTS gateway on :5600 (release) [args forwarded]
 	@cargo run -q --release -p e-voice-tts -- $(CONFIGURED) serve $(ARGS)
 
-tts:  ## live synthesis to the speaker: make tts ARGS='"Hola" --voice damien' (no text: type lines, empty line barges in; gateway: ECLI_TTS_URL)
+tts:  ## live synthesis to the speaker: make tts ARGS='"Hola" --voice damien' (no text: type lines, empty line barges in; gateway: ECLI_TTS_URL, default ws://127.0.0.1:45150)
 	@cargo run -q --release -p ecli -- tts $(ARGS)
 
 docs:  ## the OpenAPI documents, then the documentation site into data/ops/site

@@ -5,6 +5,9 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Host, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
 use tokio::sync::mpsc;
 
+/// PulseAudio names the loopback of every output "Monitor of …": what the speakers play, not a microphone.
+pub const MONITOR: &str = "Monitor of";
+
 #[derive(Debug, thiserror::Error)]
 pub enum MicError {
     #[error("no input device{}; run `ecli devices`", .0.as_deref().map(|name| format!(" matching {name:?}")).unwrap_or_default())]
@@ -100,12 +103,25 @@ impl Mic {
             .collect())
     }
 
+    /// Without a name, the system default input — unless it is a playback monitor (a Bluetooth headset
+    /// in its music profile has no microphone, so PulseAudio falls back to its monitor), then the first
+    /// real input.
+    ///
     /// # Errors
     /// No matching device, an unsupported sample format, or the audio backend refusing the stream.
     pub fn open(name: Option<&str>, chunks: mpsc::Sender<Vec<u8>>) -> Result<Self, MicError> {
         let host = Self::host();
+        let monitor = |device: &cpal::Device| {
+            device
+                .description()
+                .is_ok_and(|description| description.name().starts_with(MONITOR))
+        };
         let device = match name {
-            None => host.default_input_device(),
+            None => host
+                .default_input_device()
+                .filter(|device| !monitor(device))
+                .or_else(|| host.input_devices().ok()?.find(|device| !monitor(device)))
+                .or_else(|| host.default_input_device()),
             Some(wanted) => {
                 let wanted = wanted.to_lowercase();
                 host.input_devices()?.find(|device| {
