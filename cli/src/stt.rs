@@ -48,7 +48,7 @@ pub struct SttArgs {
     #[arg(long = "struct")]
     structured: bool,
     /// Gateway base URL.
-    #[arg(long, default_value = "ws://127.0.0.1:5500")]
+    #[arg(long, env = "ECLI_STT_URL", default_value = "ws://127.0.0.1:5500")]
     url: String,
     /// Spoken language; the server default when omitted.
     #[arg(long)]

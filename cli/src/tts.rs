@@ -34,7 +34,7 @@ pub enum TtsError {
 pub struct TtsArgs {
     text: Option<String>,
     /// TTS gateway base URL.
-    #[arg(long, default_value = "ws://127.0.0.1:5600")]
+    #[arg(long, env = "ECLI_TTS_URL", default_value = "ws://127.0.0.1:5600")]
     url: String,
     #[arg(long)]
     lang: Option<String>,
