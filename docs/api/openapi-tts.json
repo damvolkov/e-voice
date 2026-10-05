@@ -178,11 +178,11 @@
         "tags": [
           "voices"
         ],
-        "summary": "Learns a voice from one or more clips of the same speaker (multipart: `voice_id`, then `file`\nparts in any container `ffmpeg` would call common: wav, mp3, m4a, flac, ogg, webm). Clean speech,\n5-30 s in total; anything past 30 s is ignored. Replaces a voice with the same id.",
+        "summary": "Learns a voice from one or more clips of the same speaker (multipart: `voice_id`, optional `text`\nwith what the clips say, then `file` parts: wav, mp3, m4a, flac, ogg, webm). Clean speech, 5-30 s\nin total; anything past 30 s is ignored. The transcript enables in-context cloning on backends that\nuse it (Qwen3, NeuTTS). Replaces a voice with the same id.",
         "description": "# Errors\nA malformed form, undecodable audio, a backend that cannot learn voices, or a failed write.",
         "operationId": "create",
         "requestBody": {
-          "description": "`voice_id` text field and one or more `file` parts",
+          "description": "`voice_id`, optional `text` (transcript), one or more `file` parts",
           "content": {
             "multipart/form-data": {}
           }
