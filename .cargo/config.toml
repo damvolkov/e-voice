@@ -2,6 +2,6 @@
 target-dir = "data/ops/target"
 
 [env]
-SHERPA_ONNX_LIB_DIR = { value = "data/stt/ops/sherpa/lib", relative = true }
-LD_LIBRARY_PATH = { value = "data/stt/ops/sherpa/lib", relative = true }
-DYLD_LIBRARY_PATH = { value = "data/stt/ops/sherpa/lib", relative = true }
+SHERPA_ONNX_LIB_DIR = { value = "data/ops/sherpa/lib", relative = true }
+LD_LIBRARY_PATH = { value = "data/ops/sherpa/lib", relative = true }
+DYLD_LIBRARY_PATH = { value = "data/ops/sherpa/lib", relative = true }

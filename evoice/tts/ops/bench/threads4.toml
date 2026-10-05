@@ -1,0 +1,3 @@
+# Pocket base with 4 onnxruntime threads per stream: latency of one stream vs throughput of many.
+[tts.synth]
+threads = 4

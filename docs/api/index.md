@@ -40,7 +40,7 @@ Anthropic has no speech-to-text API, so there is none to mirror. The running ser
 
 ## Emotion
 
-`server.emotion` sets the default; every endpoint accepts `emotion=field|tag|off` (query parameter or
+`stt.api.emotion` sets the default; every endpoint accepts `emotion=field|tag|off` (query parameter or
 form field).
 
 | Mode | Effect |

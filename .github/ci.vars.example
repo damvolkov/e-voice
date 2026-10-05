@@ -10,4 +10,4 @@
 # and the runtime image builds on every PR.
 
 DOCS_DEPLOY=false      # docs.yml publishes the site to GitHub Pages from main (Settings → Pages → Source: GitHub Actions)
-PUBLISH_IMAGE=false    # release.yml pushes ghcr.io/<owner>/e-voice-stt :X.Y.Z, :X.Y and :latest
+PUBLISH_IMAGE=false    # release.yml pushes ghcr.io/<owner>/e-voice-{stt,tts,full} :X.Y.Z, :X.Y and :latest

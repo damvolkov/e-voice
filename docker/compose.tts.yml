@@ -1,7 +1,10 @@
-##### E-VOICE · TTS (TEMPLATE) #####
-# The TTS service alone on :5600 — inert until the e-voice-tts crate exists (see docker/Dockerfile.tts).
+##### E-VOICE · TTS #####
+# The TTS service alone on :5600. Run from the repository root:
 #   docker compose -f docker/compose.tts.yml up -d                                   (alone)
 #   docker compose -f docker/compose.stt.yml -f docker/compose.tts.yml up -d         (split)
+# TTS runs Qwen3 (public weights, installed by `tts-pull`). Pocket's bundles are local exports of a gated
+# checkpoint: run `make pocket` on the host and set EVOICE_TTS_BACKEND=pocket; `tts-pull` installs them
+# from data/tts/ops/exports, mounted read-only. Voices learned through the API persist in the volume.
 name: e-voice
 
 services:
@@ -11,8 +14,11 @@ services:
       dockerfile: docker/Dockerfile.tts
     image: e-voice:tts
     command: ["pull"]
-    volumes: &data
+    environment:
+      EVOICE_TTS__SYNTH__BACKEND: ${EVOICE_TTS_BACKEND:-qwen3}
+    volumes:
       - ${EVOICE_TTS_DATA:-e-voice-tts}:/data/tts
+      - ../data/tts/ops/exports:/app/data/tts/ops/exports:ro
     restart: "no"
 
   tts:
@@ -20,7 +26,12 @@ services:
     depends_on:
       tts-pull:
         condition: service_completed_successfully
-    volumes: *data
+    environment:
+      EVOICE_TTS__LANG: ${EVOICE_TTS_LANG:-es}
+      EVOICE_TTS__VOICE: ${EVOICE_TTS_VOICE:-}
+      EVOICE_TTS__SYNTH__BACKEND: ${EVOICE_TTS_BACKEND:-qwen3}
+    volumes:
+      - ${EVOICE_TTS_DATA:-e-voice-tts}:/data/tts
     ports:
       - "${EVOICE_TTS_PORT:-5600}:5600"
     stop_grace_period: 30s

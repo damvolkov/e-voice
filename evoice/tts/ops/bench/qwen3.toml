@@ -1,0 +1,4 @@
+# Qwen3-TTS 12Hz 0.6B: higher-fidelity cloning, about real time on one stream.
+[tts.synth]
+backend = "qwen3"
+threads = 4

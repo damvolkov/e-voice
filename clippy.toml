@@ -2,4 +2,4 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-indexing-slicing-in-tests = true
-doc-valid-idents = ["OpenAI", "OpenHuman", "WebSocket", "onnxruntime", "PulseAudio", "PipeWire", "GigaSpeech", "Zipformer", "ElevenLabs", "Deepgram", "CORS", "CoreAudio", "NeMo", ".."]
+doc-valid-idents = ["OpenAI", "OpenHuman", "WebSocket", "onnxruntime", "PulseAudio", "PipeWire", "GigaSpeech", "Zipformer", "ElevenLabs", "Deepgram", "CORS", "CoreAudio", "NeMo", "WeSpeaker", "ResNet34", "VoxCeleb", "NeuTTS", "NeuCodec", "Qwen3", ".."]

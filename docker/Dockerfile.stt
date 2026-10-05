@@ -27,7 +27,7 @@ ARG VERSION=""
 ARG PACKAGES="--package e-voice-stt"
 ARG BINS="e-voice"
 COPY Cargo.lock ./
-COPY stt/ops/sherpa.sh stt/ops/sherpa.sh
+COPY evoice/core/ops/sherpa.sh evoice/core/ops/sherpa.sh
 RUN make sherpa
 COPY .cargo .cargo
 COPY --from=planner /src/recipe.json recipe.json
@@ -44,7 +44,7 @@ RUN apt-get update \
  && useradd --create-home --uid 10001 evoice \
  && mkdir -p /data/stt && chown -R evoice:evoice /data
 COPY --from=builder /out/ /app/
-COPY stt/models.toml /app/stt/models.toml
+COPY evoice/stt/models.toml /app/stt/models.toml
 ENV PATH=/app/bin:$PATH \
     EVOICE_STT__OPS__DATA=/data/stt \
     EVOICE_STT__OPS__MANIFEST=/app/stt/models.toml \

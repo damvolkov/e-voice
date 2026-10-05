@@ -5,14 +5,15 @@ deployment.
 
 | Mode | Dockerfile | Compose | Image | Port |
 |---|---|---|---|---|
-| `full` (default) | `Dockerfile.full` | `compose.full.yml` | `e-voice:full` | 5500 |
+| `full` (default) | `Dockerfile.full` | `compose.full.yml` | `e-voice:full` | 5500 + 5600 |
 | `stt` | `Dockerfile.stt` | `compose.stt.yml` | `e-voice:stt` | 5500 |
-| `tts` (template) | `Dockerfile.tts` | `compose.tts.yml` | `e-voice:tts` | 5600 |
+| `tts` | `Dockerfile.tts` | `compose.tts.yml` | `e-voice:tts` | 5600 |
 
 ```bash
-make up                  # MODE=full: every service in one container
+make up                  # MODE=full: STT and TTS in one container
 make up MODE=stt         # STT alone
-make up MODE=split       # stt + tts side by side (tts is a template until its crate exists)
+make up MODE=tts         # TTS alone (its Pocket bundles come from `make pocket`)
+make up MODE=split       # stt + tts side by side
 make image MODE=…        # build only
 make down MODE=…
 ```
@@ -41,3 +42,20 @@ Environment variables override any key (`EVOICE_<SECTION>__<KEY>`); compose pass
 ```bash
 EVOICE_PORT=5501 EVOICE_LANG=en make up
 ```
+
+## TTS
+
+Images run TTS on **Qwen3** (`EVOICE_TTS__SYNTH__BACKEND=qwen3`, 2 workers × 4 threads): its weights are
+public, so `pull` installs them like any STT model. Pocket's bundles are local exports of a gated
+checkpoint and are never downloaded inside a container: run `make pocket` on the host and set
+`EVOICE_TTS_BACKEND=pocket`; the pull service mounts `data/tts/ops/exports` read-only and installs them.
+Learned voices live in the `e-voice-tts` volume (`/data/tts/voices`), learned through `POST /v1/voices`;
+`EVOICE_TTS_VOICE=<id>` sets the default voice, `EVOICE_TTS_PORT` the port.
+
+`full` runs both binaries under tini (`docker/full.sh`): `pull` installs both model sets, `serve` starts
+both and stops the container when either exits; the healthcheck probes both ports.
+
+## Published images
+
+The release workflow publishes `ghcr.io/damvolkov/e-voice-stt`, `-tts` and `-full` (`:X.Y.Z`, `:X.Y`,
+`:latest`) when the `PUBLISH_IMAGE` gate is on.

@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
-# TEMPLATE — TTS service alone (e-voice:tts, :5600). The e-voice-tts crate (binary e-voice-tts,
-# manifest tts/models.toml) does not exist yet: the build fails at `cook` until it does.
+# TTS service alone (e-voice:tts, :5600): binary e-voice-tts, manifest evoice/tts/models.toml. Defaults
+# to Qwen3 (public weights, installed by `pull`); Pocket needs the local exports of `make pocket`, which
+# the compose `tts-pull` service mounts (EVOICE_TTS__SYNTH__BACKEND=pocket to use them).
 # Build context is the repository root. Build steps are the Makefile's: `system`, `sherpa`, `dist`.
 
 ##### BASES #####
@@ -28,7 +29,7 @@ ARG VERSION=""
 ARG PACKAGES="--package e-voice-tts"
 ARG BINS="e-voice-tts"
 COPY Cargo.lock ./
-COPY stt/ops/sherpa.sh stt/ops/sherpa.sh
+COPY evoice/core/ops/sherpa.sh evoice/core/ops/sherpa.sh
 RUN make sherpa
 COPY .cargo .cargo
 COPY --from=planner /src/recipe.json recipe.json
@@ -40,15 +41,18 @@ RUN E_VOICE_VERSION="${VERSION}" make dist PACKAGES="${PACKAGES}" BINS="${BINS}"
 # No make or toolchain here by design: the runtime only needs certificates and an init.
 FROM ${RUNTIME}
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates tini \
+ && apt-get install -y --no-install-recommends ca-certificates espeak-ng tini \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 10001 evoice \
  && mkdir -p /data/tts && chown -R evoice:evoice /data
 COPY --from=builder /out/ /app/
-COPY tts/models.toml /app/tts/models.toml
+COPY evoice/tts/models.toml /app/tts/models.toml
 ENV PATH=/app/bin:$PATH \
     EVOICE_TTS__OPS__DATA=/data/tts \
     EVOICE_TTS__OPS__MANIFEST=/app/tts/models.toml \
+    EVOICE_TTS__SYNTH__BACKEND=qwen3 \
+    EVOICE_TTS__SYNTH__WORKERS=2 \
+    EVOICE_TTS__SYNTH__THREADS=4 \
     EVOICE_SERVER__LOG__FORMAT=json
 WORKDIR /app
 USER evoice

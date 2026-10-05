@@ -1,0 +1,110 @@
+# Pinned artifacts of the TTS service: `e-voice-tts pull` installs them into data/tts/models.
+#
+# Pocket TTS (kyutai/pocket-tts@3e82814, gated: accept its terms) has no ONNX for its current weights;
+# `make pocket` exports them into data/tts/ops/exports with lomotron/pocket-tts-onnx-export@8f52199
+# (graphs, fp32 + dynamic int8). The digests pin this exporter's output: another torch build may
+# trace different bytes, which `pull` then refuses.
+
+[[model]]
+id = "pocket-es"
+files = [
+  { url = "file://data/tts/ops/exports/pocket-spanish/bundle.json", sha256 = "3d192699e0d1bda5a71df16b15ab559fc817ddcadde964add815208fe482ef2d" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/tokenizer.model", sha256 = "9714c8ce180d8147ab4c1406cd759619828f95d7000c87c41dc9ccec527a3e89" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/bos_before_voice.npy", sha256 = "961594efd70c2f33cf66bc8acafaa77ab275b8818db8382e4761bb23df166f6e" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/text_conditioner.onnx", sha256 = "31279075102a6d4d046ce10da36c5916d7fe76a0fa5e69098ee4accdef8d505e" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/mimi_encoder.onnx", sha256 = "b97cb7a111b608ce29d2c4207562f9853907fcc11478f0bbd8e40b1a141c7c43" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/flow_lm_main.onnx", sha256 = "437d3b66c68590d84fa33cd1ab8ce3a3d66145fe0ff6ec26016c96d679069368" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/flow_lm_main_int8.onnx", sha256 = "6ac12c7e93729bf63262c4c687cc8f475f7218ab41121575bb92a316f77e84c0" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/flow_lm_flow.onnx", sha256 = "2e11cb25a10e2e4880e691fb380a3b350b041491f450a777b689f39f94339356" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/flow_lm_flow_int8.onnx", sha256 = "bb929fba3fdeec8dd7532229673273b5ea214c88581164e4587ea9ce38f96065" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/mimi_decoder.onnx", sha256 = "dbb9f0cac47d5e3759d8dff85cf55a10c27a889ebfc2a935773f11ad8026b864" },
+  { url = "file://data/tts/ops/exports/pocket-spanish/mimi_decoder_int8.onnx", sha256 = "17a99d282370d4066c90e5f3201aaa8f389c130cd8bbe5cb62de72d4ded6a9ff" },
+]
+
+[[model]]
+id = "pocket-es-24l"
+files = [
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/bundle.json", sha256 = "d9c3fe5a7f88b4d96f733ce4321082bf8090c907306866c1259d850c6e6272aa" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/tokenizer.model", sha256 = "9714c8ce180d8147ab4c1406cd759619828f95d7000c87c41dc9ccec527a3e89" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/bos_before_voice.npy", sha256 = "c99a5035f90cd31d3e16cbbc51ed101c67a237a15002ccc59326bb21f1bc1b25" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/text_conditioner.onnx", sha256 = "b66a4d632287a2df9bddc40847c7e2fc9c387d01b8d9c370fb33168c46475338" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/mimi_encoder.onnx", sha256 = "e3519ad3508a4fd26222d1c58d4d7584dd688ca5cfd1b0e5cb0c5a32086160a1" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/flow_lm_main.onnx", sha256 = "5da44cc3c98d1c1bdd993ab5f3494b66d2c1f728fa751c2ce5133ac025aa34b7" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/flow_lm_main_int8.onnx", sha256 = "3f7a00851d195323b4afa055aa00840140f0b0e1be8384c087119d14c2ffca00" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/flow_lm_flow.onnx", sha256 = "2e11cb25a10e2e4880e691fb380a3b350b041491f450a777b689f39f94339356" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/flow_lm_flow_int8.onnx", sha256 = "bb929fba3fdeec8dd7532229673273b5ea214c88581164e4587ea9ce38f96065" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/mimi_decoder.onnx", sha256 = "dbb9f0cac47d5e3759d8dff85cf55a10c27a889ebfc2a935773f11ad8026b864" },
+  { url = "file://data/tts/ops/exports/pocket-spanish_24l/mimi_decoder_int8.onnx", sha256 = "17a99d282370d4066c90e5f3201aaa8f389c130cd8bbe5cb62de72d4ded6a9ff" },
+]
+
+[[model]]
+id = "pocket-en"
+files = [
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/bundle.json", sha256 = "92315a229a296bf856633b579d369e576ce0bbed097c3575f3909615ccc4fe80" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/tokenizer.model", sha256 = "d461765ae179566678c93091c5fa6f2984c31bbe990bf1aa62d92c64d91bc3f6" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/bos_before_voice.npy", sha256 = "f6c8e97792a09d620a4b15f5df1e558f99d08c8f2d17a941a94e6ced2d3e0f36" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/text_conditioner.onnx", sha256 = "32367279cbcc408fd3115ea009af04fca94b59838ecf9ef17cccaddc245f6d8f" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/mimi_encoder.onnx", sha256 = "e670f076c03c1cff3d5c286a56ad4cf679a58f1985b8149f859c3decea189297" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/flow_lm_main.onnx", sha256 = "8c302c79bcbfe33d08dfe6d29974afe5a6128ca4dd42bc6058b70100869e104e" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/flow_lm_main_int8.onnx", sha256 = "a7f28d704426efa8beaa033920b097a501548b0b69ff0eb23a29d627dc4a6f92" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/flow_lm_flow.onnx", sha256 = "3f2a23ed64f7945a7b88f09b1d4433236844a02ff1ff30897deb9872bc273894" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/flow_lm_flow_int8.onnx", sha256 = "3dd781ee5abee9e195320bf0106bebd6372a852b3b36352524ee78b40554635d" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/mimi_decoder.onnx", sha256 = "164b6045764b9a6e4b2c85492c7efe4a5fb37737eab3be5971bcb8baae0383b6" },
+  { url = "file://data/tts/ops/exports/pocket-english_2026-09/mimi_decoder_int8.onnx", sha256 = "f62ccafcd90d34bdab5343cad59363988e9634a0fab014563179cee387dd9cce" },
+]
+
+# Speaker verification (WeSpeaker ResNet34 on VoxCeleb): `bench --reference` scores voice similarity.
+[[model]]
+id = "speaker-resnet34"
+scope = "ops"
+files = [{ url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_resnet34_LM.onnx", sha256 = "e9848563da86f263117134dfd7ad63c92355b37de492b55e325400c9d9c39012" }]
+
+# Qwen3-TTS 12Hz 0.6B Base (Apache-2.0), ONNX by wavekat: talker (int4) with KV, code predictor (int4),
+# causal vocoder, speaker encoder and speech-tokenizer encoder (for in-context cloning).
+[[model]]
+id = "qwen3-tts"
+files = [
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/config.json", sha256 = "9f6444a4e6c6a2bb238116957f2852713c447a581f791dcea088e6e6bf9bb55c" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/tokenizer/tokenizer.json", sha256 = "09267689b8362020b9763b65dd5be7e086b31e28d72e02837a9e781de9a91bc7" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_0.npy", sha256 = "2cf4b5d6f6fca977657bc82634eea275cd072036a6a16484febd41b5445abff1" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_1.npy", sha256 = "c8655ecd642f17d04a85ea37c2665205a8666843925227b25dc8c8bceb8015f5" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_10.npy", sha256 = "bf17275629b464a4a38826beeb79b99e0e58cc02c530da2e572b9b7d9972fb2d" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_11.npy", sha256 = "dee4af40f34626a4951fba2b894120c8cf8293024ae068d1f2579f356c6e2284" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_12.npy", sha256 = "e307b70fbaddc6e7e48259b4e8c9417f24b155be9281205f38bbf40c64359951" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_13.npy", sha256 = "cc15bfc4290be77523f8f14c78b9b1710042b5d078291ee87038dfb7ecb3f185" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_14.npy", sha256 = "aa0de98365775e1cb968514595ff7e23936bea21c2bda6e5bab7e7052cdf97ba" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_2.npy", sha256 = "5436624853b3091bc1b88cf37a4d60af46346c508237d72e597bed561a5b2138" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_3.npy", sha256 = "1041b78ea5158c96cda4aae45bd21707a6fe8c92e6831715075d70d7b5b8e77a" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_4.npy", sha256 = "17af8770454ab26ca82f092d0d5a634680e4d14412d327fb8b6f94a57b256800" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_5.npy", sha256 = "b9abbf163b50ba0207e2196772c67b2e1025cf7f4fbe378c6a44123869253ad9" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_6.npy", sha256 = "1fb06414cb7d4edcd73142e79cbb4bd46f918517e5812b73345ade9535c6eafb" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_7.npy", sha256 = "08b8d7bd125d75ffa42f515153e66ade42cb16c2eea6ebe1935a2ac2509cbad0" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_8.npy", sha256 = "a2cf331bb3e2f2c0d44c91c55af045b9c975199331e4566a373b883ce04e9964" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/cp_codec_embedding_9.npy", sha256 = "389422edef8c0b6dbf6cdb48359a0274b11984c04668c004810866784dab2942" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/talker_codec_embedding.npy", sha256 = "47fa9e30f98b1528fc9b332d314f22a32fa33e187509a4d3537f8b2c31199e39" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/text_embedding.npy", sha256 = "e49a5ebb22075609520b91db99c33cf7590cefddc96d574a725a353ff0b1f480" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/text_projection_fc1_bias.npy", sha256 = "2ca292516e9574fa67e0174a49770051156246bb0679096f0514286091eea7c3" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/text_projection_fc1_weight.npy", sha256 = "94b62d00b306c5db843ac86dc135354889a2ce40d7adce79ae23f63c3d6acf19" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/text_projection_fc2_bias.npy", sha256 = "0725b7f7d0318f430723177d046eaf3b08c7a65d4a4a6dd264d61e574e66ff19" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/embeddings/text_projection_fc2_weight.npy", sha256 = "d6d31d3bca45fee1d05612f3c9eb26e0c34587be52d2c34c208c79e6656f15a6" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/int4/talker_prefill.onnx", sha256 = "4942858b31e4c000ada5f236e83208a3eb7da2016497304f8224c0a60374a5e8" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/int4/talker_prefill.onnx.data", sha256 = "7365dec88da097e8ff0f19e33cc6effe075ff387a8c6c0bb8b0725542be587b0" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/int4/talker_decode.onnx", sha256 = "d37e92e3d9ac0ec80044f0f65f1d4cb86f5f9e804e82883b1f38bf59e4786271" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/int4/talker_decode.onnx.data", sha256 = "7365dec88da097e8ff0f19e33cc6effe075ff387a8c6c0bb8b0725542be587b0" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/int4/code_predictor.onnx", sha256 = "6077ceb8fd1dd2c9e4533d564d917b913f4a4bf1056ee946f99dcb56dff3234f" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/int4/code_predictor.onnx.data", sha256 = "78b530db39646d04ce8dbe60ae35e814ba05d832f345d828ed6ad69483af8b43" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/fp32/vocoder.onnx", sha256 = "d1cf6f6b77d728c4484f9277ec886dcbf06b4f4b0310c99be34d7bc6a516959e" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/fp32/vocoder.onnx.data", sha256 = "d29e56c20bc6ff8d996daaae914d5d1ec1cd8170be578dc792b44978208a9575" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/speaker_encoder.onnx", sha256 = "fa067d83976b96c98ba302ada0f03dde7c85189953fd1c7a178fc32e99cb8da8" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/speaker_encoder.onnx.data", sha256 = "9f6f588deda5ebbcda0a6b010bded2669faf861f402cc5ba5556c58d5c0aeb54" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/tokenizer_encoder.onnx", sha256 = "98284239976a637a229df22207b6ef34ff9a487890cfd00410e9c0facf7c182a" },
+  { url = "https://huggingface.co/wavekat/Qwen3-TTS-0.6B-Base-ONNX/resolve/177cd39e2ddab0d4d7ce5152a7abc2d382621158/tokenizer_encoder.onnx.data", sha256 = "4d8a454094b2f58265f4dab7545211f73331f78888a36a9039272818f51ecf2c" },
+]
+
+# NeuCodec encoder, distilled (KevinAHM, Apache-2.0): reference clips → NeuTTS codes (16 kHz in).
+[[model]]
+id = "neucodec-encoder"
+files = [
+  { url = "https://huggingface.co/KevinAHM/distill-neucodec-onnx/resolve/2cd5cf022b7a1e689e561f0492787768cfe8395d/onnx/distill_neucodec_encoder.onnx", sha256 = "04af54f6af51a7573a8bbcfd691b4f2c68b6dbd03aef72b983cbb4e5140c3a23" },
+  { url = "https://huggingface.co/KevinAHM/distill-neucodec-onnx/resolve/2cd5cf022b7a1e689e561f0492787768cfe8395d/onnx/distill_neucodec_encoder.onnx.data", sha256 = "935859ed7904671dc82da1c533b9bf2fd8bcf6d8fc702bdba5bc25c8f7329e4f" },
+]

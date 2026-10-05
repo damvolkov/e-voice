@@ -1,6 +1,6 @@
 [project]
 site_name = "e-voice"
-site_description = "CPU-first speech service in Rust: streaming STT with emotion, behind OpenAI, Deepgram and ElevenLabs compatible APIs."
+site_description = "CPU-first speech services in Rust: streaming STT with emotion and streaming TTS with learned voices, behind OpenAI-compatible APIs."
 site_url = "https://damvolkov.github.io/e-voice/"
 site_dir = "data/ops/site"
 repo_url = "https://github.com/damvolkov/e-voice"
@@ -15,6 +15,7 @@ nav = [
     { "Configuration" = "guide/configuration.md" },
     { "Clients" = "guide/clients.md" },
     { "Wake word" = "guide/wake.md" },
+    { "Voices" = "guide/voices.md" },
   ] },
   { "API" = [
     { "Protocols" = "api/index.md" },
@@ -22,6 +23,7 @@ nav = [
     { "OpenAI" = "api/openai.md" },
     { "Deepgram" = "api/deepgram.md" },
     { "ElevenLabs" = "api/elevenlabs.md" },
+    { "Text to speech" = "api/tts.md" },
     { "Reference" = "api/reference.md" },
   ] },
   { "Architecture" = "architecture.md" },
@@ -32,6 +34,7 @@ nav = [
   { "History" = [
     { "2026-10 · backends benchmark" = "history/2026-10-backends/index.md" },
     { "2026-10 · CPU benchmark" = "history/2026-10-benchmark.md" },
+    { "2026-10 · TTS" = "history/2026-10-tts.md" },
   ] },
 ]
 

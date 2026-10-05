@@ -1,4 +1,4 @@
-"""python -m e_voice_eval fetch|report|annex|confusion"""
+"""python -m e_voice_eval fetch|report|synthesis|annex|confusion"""
 
 import argparse
 from pathlib import Path
@@ -10,6 +10,7 @@ from e_voice_eval.chart import Chart
 from e_voice_eval.datasets import DATASETS
 from e_voice_eval.report import Report
 from e_voice_eval.scoring import Scoring
+from e_voice_eval.synthesis import Synthesis
 
 
 def main() -> None:
@@ -22,6 +23,9 @@ def main() -> None:
     report = commands.add_parser("report", help="compare bench results files")
     report.add_argument("files", type=Path, nargs="+")
     report.add_argument("--out", type=Path)
+    synthesis = commands.add_parser("synthesis", help="compare TTS bench results files (with their STT round trips)")
+    synthesis.add_argument("files", type=Path, nargs="+")
+    synthesis.add_argument("--out", type=Path)
     annex = commands.add_parser("annex", help="report.md, summary.csv and charts.md of bench results into a directory")
     annex.add_argument("files", type=Path, nargs="+")
     annex.add_argument("--out", type=Path, required=True)
@@ -33,6 +37,11 @@ def main() -> None:
             DATASETS[args.name].fetch(args.root, args.limit)
         case "report":
             table = Report(tuple(args.files)).markdown()
+            print(table)
+            if args.out:
+                args.out.write_text(table + "\n", encoding="utf-8")
+        case "synthesis":
+            table = Synthesis(tuple(args.files)).markdown()
             print(table)
             if args.out:
                 args.out.write_text(table + "\n", encoding="utf-8")

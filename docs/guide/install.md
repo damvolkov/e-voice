@@ -40,7 +40,7 @@ make setup ARGS=--all       # every model in the manifest (tests, benchmark, wak
 ```
 
 `make sherpa` vendors the pinned sherpa-onnx 1.13.8 shared libraries (with onnxruntime 1.28.2) for
-linux-x64, macOS universal2 or windows-x64 into `data/stt/ops/sherpa`; binaries find them through an
+linux-x64, macOS universal2 or windows-x64 into `data/ops/sherpa`; binaries find them through an
 rpath (`$ORIGIN` / `@loader_path`) or, on Windows, a copy beside the executable.
 
 !!! note "Platforms"
@@ -53,9 +53,16 @@ The repository ignores `data/` except its `.gitkeep`:
 
 ```
 data/
-├── ops/target         cargo build output
-├── ops/site           built documentation
-└── stt/
-    ├── models         pipeline models (the Docker volume)
-    └── ops/           sherpa libraries, tool and test models, exports, datasets, results
+├── ops/
+│   ├── target         cargo build output
+│   ├── sherpa         sherpa-onnx + onnxruntime libraries, shared by every service
+│   ├── hf             Hugging Face token and transfer cache (never ~/.cache)
+│   └── site           built documentation
+├── stt/
+│   ├── models         pipeline models (the Docker volume)
+│   └── ops/           tool and test models, exports, datasets, results
+└── tts/
+    ├── models         synthesis models (the Docker volume)
+    ├── voices         learned voices
+    └── ops/           checkpoints, exporter, exports (+ goldens), tool models, results
 ```
