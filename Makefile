@@ -1,4 +1,7 @@
 .DEFAULT_GOAL := help
+# Local, untracked overrides (e.g. ECLI_STT_URL / ECLI_TTS_URL for `make stt` / `make tts` against a deployed gateway).
+-include .env
+export ECLI_STT_URL ECLI_TTS_URL
 MAKEFLAGS += --no-print-directory
 export PATH := $(HOME)/.cargo/bin:$(HOME)/.local/bin:$(PATH)
 SHELL := bash
@@ -115,13 +118,13 @@ annex:  ## benchmark annex (table, CSV, charts) of every results file: make anne
 serve: sherpa  ## run the gateway (release) [args forwarded]
 	@cargo run -q --release -p e-voice-stt -- $(CONFIGURED) serve $(ARGS)
 
-stt:  ## live mic transcription: make stt ARGS="--flat | --struct [--lang es]"
+stt:  ## live mic transcription: make stt ARGS="--flat | --struct [--lang es]" (gateway: ECLI_STT_URL, default ws://127.0.0.1:5500)
 	@cargo run -q --release -p ecli -- stt $(ARGS)
 
 speak: sherpa  ## run the TTS gateway on :5600 (release) [args forwarded]
 	@cargo run -q --release -p e-voice-tts -- $(CONFIGURED) serve $(ARGS)
 
-tts:  ## live synthesis to the speaker: make tts ARGS='"Hola" --voice damien' (no text: type lines, empty line barges in)
+tts:  ## live synthesis to the speaker: make tts ARGS='"Hola" --voice damien' (no text: type lines, empty line barges in; gateway: ECLI_TTS_URL)
 	@cargo run -q --release -p ecli -- tts $(ARGS)
 
 docs:  ## the OpenAPI documents, then the documentation site into data/ops/site
@@ -180,8 +183,8 @@ gates:  ## every vars.* a workflow reads is declared, disabled, in .github/ci.va
 	  for gate in $$used; do grep -qE "^$$gate=false" .github/ci.vars.example || { echo "gate $$gate is undeclared or ships enabled"; exit 1; }; done; \
 	  ! grep -qE '^[A-Z_]+=true' .github/ci.vars.example && printf '\033[32mgates ok\033[0m\n'
 
-release:  ## cut a release: make release BUMP=patch|minor|major (tag, GitHub release, gated images)
-	@gh workflow run release.yml -f bump=$(BUMP)
+release:  ## release one service: make release SERVICE=stt|tts|both BUMP=patch|minor|major (full goes with it)
+	@gh workflow run release.yml -f service=$(SERVICE) -f bump=$(BUMP)
 
 check: lint bounds gates test  ## the local gate
 

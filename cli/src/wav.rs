@@ -30,7 +30,7 @@ impl Wav {
         let mono: Vec<u8> = samples
             .chunks(channels)
             .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-            .flat_map(|sample| ((sample.clamp(-1.0, 1.0) * 32_767.0) as i16).to_le_bytes())
+            .flat_map(|sample| ((sample * 32_768.0).round().clamp(-32_768.0, 32_767.0) as i16).to_le_bytes())
             .collect();
         let step = (spec.sample_rate as usize / 10).max(1).saturating_mul(2);
         tokio::spawn(async move {

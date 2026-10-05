@@ -10,7 +10,7 @@ license = "MIT"
 workspace = true
 
 [dependencies]
-clap = { version = "4.6.7", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive", "env"] }
 cpal = "0.18.2"
 futures-util = "0.3.34"
 hound = "3.5.1"
