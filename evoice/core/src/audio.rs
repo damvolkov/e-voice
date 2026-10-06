@@ -274,6 +274,37 @@ impl AudioFile {
         })
     }
 
+    /// ISO-BMFF top-level boxes; a malformed size ends the walk with the rest as one box.
+    fn decode_boxes(bytes: &[u8]) -> impl Iterator<Item = &[u8]> {
+        let size = |rest: &[u8]| -> Option<usize> {
+            let word = |range: std::ops::Range<usize>| rest.get(range);
+            let size = match u32::from_be_bytes(word(0..4)?.try_into().ok()?) {
+                0 => rest.len(),
+                1 => usize::try_from(u64::from_be_bytes(word(8..16)?.try_into().ok()?)).ok()?,
+                short => usize::try_from(short).ok()?,
+            };
+            (8..=rest.len()).contains(&size).then_some(size)
+        };
+        std::iter::successors(Some((&[][..], bytes)), move |&(_, rest)| {
+            rest.split_at_checked(size(rest).unwrap_or(rest.len()))
+                .filter(|(head, _)| !head.is_empty())
+        })
+        .skip(1)
+        .map(|(head, _)| head)
+    }
+
+    /// `WebKitGTK`'s `MediaRecorder` writes `ftyp` and its last `moof` twice in a row; `trun` offsets are
+    /// relative to their `moof`, so the first copy points the decoder at the second one. Drop any
+    /// top-level box identical to the one before it.
+    fn decode_fragments(bytes: Vec<u8>) -> Vec<u8> {
+        if bytes.get(4..8) != Some(b"ftyp".as_slice()) {
+            return bytes;
+        }
+        let mut boxes: Vec<&[u8]> = Self::decode_boxes(&bytes).collect();
+        boxes.dedup();
+        boxes.concat()
+    }
+
     // ##########################################################
 
     // ##### PUBLIC #####
@@ -288,7 +319,10 @@ impl AudioFile {
         if let Some(extension) = extension {
             hint.with_extension(extension);
         }
-        let source = MediaSourceStream::new(Box::new(Cursor::new(bytes)), MediaSourceStreamOptions::default());
+        let source = MediaSourceStream::new(
+            Box::new(Cursor::new(Self::decode_fragments(bytes))),
+            MediaSourceStreamOptions::default(),
+        );
         let mut format = symphonia::default::get_probe()
             .probe(&hint, source, FormatOptions::default(), MetadataOptions::default())
             .map_err(|error| fail(&error))?;
@@ -497,8 +531,9 @@ mod tests {
     fn test_file_decodes_every_openai_format_to_16k_mono() {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/resources/audio");
         let files = ["wav", "mp3", "m4a", "flac", "ogg", "opus", "webm"].map(|extension| format!("tone.{extension}"));
-        // What browsers' MediaRecorder writes: unknown-size WebM without cues, fragmented MP4.
-        let recorded = ["recorder.webm", "recorder.m4a"].map(str::to_owned);
+        // What browsers' MediaRecorder writes: unknown-size WebM without cues, fragmented MP4, and
+        // WebKitGTK's fragmented MP4 with its header and last fragment header written twice.
+        let recorded = ["recorder.webm", "recorder.m4a", "webkit.m4a"].map(str::to_owned);
         for extension in files.iter().chain(&recorded) {
             let bytes = std::fs::read(dir.join(extension)).unwrap();
             let samples = AudioFile::decode(bytes, None, 16_000).unwrap();
