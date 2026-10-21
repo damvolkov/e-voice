@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="e-voice">
+  <rect width="1024" height="1024" fill="#060c15"/>
+  <g fill="#166b7e">
+    <rect x="37" y="408" width="23"  height="206"/>
+    <rect x="37" y="408" width="120" height="21"/>
+    <rect x="37" y="489" width="103" height="21"/>
+    <rect x="37" y="593" width="120" height="21"/>
+    <rect x="175" y="489" width="103" height="21"/>
+    <rect x="313" y="408" width="21"  height="137"/>
+    <rect x="412" y="408" width="21"  height="137"/>
+    <rect x="362" y="545" width="21"  height="68"/>
+    <rect x="451" y="408" width="120" height="21"/>
+    <rect x="451" y="593" width="120" height="21"/>
+    <rect x="451" y="408" width="21"  height="206"/>
+    <rect x="550" y="408" width="21"  height="206"/>
+    <rect x="589" y="408" width="120" height="21"/>
+    <rect x="589" y="593" width="120" height="21"/>
+    <rect x="638" y="408" width="21"  height="206"/>
+    <rect x="728" y="408" width="120" height="21"/>
+    <rect x="728" y="593" width="120" height="21"/>
+    <rect x="728" y="408" width="21"  height="206"/>
+    <rect x="866" y="408" width="23"  height="206"/>
+    <rect x="866" y="408" width="120" height="21"/>
+    <rect x="866" y="489" width="103" height="21"/>
+    <rect x="866" y="593" width="120" height="21"/>
+  </g>
+</svg>

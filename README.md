@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/e-voice.svg" alt="e-voice" width="160" />
+  <img src="assets/logo.svg" alt="e-voice" width="220" />
 </p>
 
 <h1 align="center">e-voice</h1>
