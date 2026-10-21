@@ -1,8 +1,8 @@
-<p align="center">
-  <img src="assets/logo.svg" alt="e-voice" width="220" />
-</p>
-
 <h1 align="center">e-voice</h1>
+
+<p align="center">
+  <img src="assets/logo.svg" alt="e-voice" height="110" />
+</p>
 
 <p align="center">
   <strong>CPU-first speech services in Rust — streaming STT with emotion on every segment, and streaming TTS that speaks in a learned voice, behind OpenAI-compatible APIs.</strong>
